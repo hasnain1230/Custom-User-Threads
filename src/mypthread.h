@@ -17,6 +17,9 @@
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <ucontext.h>
+
+
 
 typedef uint mypthread_t;
 
@@ -32,19 +35,40 @@ typedef struct threadControlBlock
 	// thread priority
 	// And more ...
 
+	int threadID;
+	int status;
+	int priority;
+	ucontext_t* context;
+	void* stack;
+
+
 } tcb;
 
 /* mutex struct definition */
 typedef struct mypthread_mutex_t
 {
+	// If lock == 0, then no thread has the lock on the mutex
+	// If look == 1,then there is a lock on the mutex
+	int lock;
 
-	// YOUR CODE HERE
+	// Should we include a queue for the mutex within the struct?
 	
 } mypthread_mutex_t;
 
 
 // Feel free to add your own auxiliary data structures (linked list or queue etc...)
 
+
+// We need a queue data strcture to hold threads that are waiting for mutex
+typedef struct threadQueNode {
+	tcb* currentTCB;
+	threadQueNode* nextThreadNode;
+} threadQueNode;
+
+typedef struct mutexQueNode {
+	tcb* currentTCB;
+	threadQueuNode* nextThreadNode;
+} mutexQueNode;
 
 
 /* Function Declarations: */

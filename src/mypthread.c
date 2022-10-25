@@ -4,9 +4,25 @@
 // iLab machine tested on:
 
 #include "mypthread.h"
+#include <ucontext.h>
 
 // INITAILIZE ALL YOUR VARIABLES HERE
 // YOUR CODE HERE
+
+#define STACKSIZE 30000
+
+
+// Keep track of the number of threads so that the threadIDs are assigned properly
+int threadCount = 0;
+
+
+// Required to periodically switch to the scheduler context
+// Need to save the scheduler context globally to run it
+ucontext_t schedulerContext;
+
+
+
+// Need a queue to keep track of threads 
 
 
 /* create a new thread */
@@ -18,6 +34,33 @@ int mypthread_create(mypthread_t * thread, pthread_attr_t * attr, void *(*functi
 	   // create and initialize the context of this thread
 	   // allocate heap space for this thread's stack
 	   // after everything is all set, push this thread into the ready queue
+
+		tcb* newTCB = (tcb*) malloc(sizeof(tcb*));
+		newTCB->threadID = threadCount + 1;
+		newTCB->context = (ucontext_t*) malloc(sizeof(ucontext_t*));
+		newTCB->stack = malloc(STACKSIZE);
+		newTCB->context->uc_stack.ss_sp = stack;
+		newTCB->context->uc_stack.ss_size = STACKSIZE;
+		newTCB->context->uc_stack.ss_flags = 0;
+		newTCB->priority = 1;
+		newTCB->status = 1;
+
+		getcontext(newTCB->context);
+
+		// HOW DO WE GET NUMBER OF ARGUMENTS PASS TO THREAD?
+		// THIS NEEDS TO BE PLACED WHERE THE 1 IS CURRENTLY BELOW
+		makecontext(newTCB->context,function,1);
+
+		// Increment the number of threads
+		threadCount++;
+
+
+		// The tcb has been set up, now push it into the ready queue
+
+
+
+
+		
 
 
 	return 0;
@@ -77,16 +120,28 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex)
 		// if the mutex is acquired successfully, return
 		// if acquiring mutex fails, put the current thread on the blocked/waiting list and context switch to the scheduler thread
 		
+		// Check if the mutex is locked or unlocked
+		// If mutex is unlocked then you can simply give the lock to the thread and return
+		// If mutex is already locked, then put current thread on blocked/waiting list and context switch to the scheduler thread
+
+
+
 		return 0;
 };
 
 /* release the mutex lock */
 int mypthread_mutex_unlock(mypthread_mutex_t *mutex)
 {
-	// YOUR CODE HERE	
-	
+	// YOUR CODE HERE
 	// update the mutex's metadata to indicate it is unlocked
 	// put the thread at the front of this mutex's blocked/waiting queue in to the run queue
+
+
+
+	// Set the lock status of the mutex to 0
+	// Get the blocked/waiting queue and take the thread at the front of this queue (nextThread)
+	// Take the nextThread and queue it into the run queue
+
 
 	return 0;
 };
@@ -101,6 +156,11 @@ int mypthread_mutex_destroy(mypthread_mutex_t *mutex)
 
 	return 0;
 };
+
+
+
+
+
 
 /* scheduler */
 static void schedule()
