@@ -1,19 +1,44 @@
 // File:	mypthread.c
 
 // List all group members' names:
+// Hasnain Ali...
 // iLab machine tested on:
 
+#define _XOPEN_SOURCE
 #include "mypthread.h"
+#include <stdatomic.h>
+#include <ucontext.h>
+
+#define STACKSIZE (2 * 1024 * 1024) // According to man pthread_attr_init, the default stack size is 2MB. Keeping with this, we'll initialize the stack size to 2MiB as well, converted to bytes.
 
 // INITAILIZE ALL YOUR VARIABLES HERE
 // YOUR CODE HERE
 
+/*
+void startFunction(void *(*function) (void*), void *args) {
+    function(args);
+}
+*/
 
 /* create a new thread */
-int mypthread_create(mypthread_t * thread, pthread_attr_t * attr, void *(*function)(void*), void * arg)
-{
-	   // YOUR CODE HERE	
-	
+int mypthread_create(mypthread_t * thread, pthread_attr_t * attr, void *(*function) (void*), void *arg) {
+    static pid_t threadId = 0;
+    bool isRunning = false;
+    ucontext_t *currentContext = malloc(sizeof(ucontext_t));
+    ucontext_t *ucontext_thread = malloc(sizeof(ucontext_t));
+    getcontext(currentContext);
+    makecontext(ucontext_thread, (void (*)(void *)) function, 1, arg); // Might need a wrapper function?
+
+
+    tcb *threadControlBlock = malloc(sizeof (tcb));
+    threadControlBlock->currentContext = currentContext;
+    threadControlBlock->threadContext = ucontext_thread;
+    threadControlBlock->threadStack = malloc(sizeof(struct thread_stack));
+    threadControlBlock->threadStack->sizeOfStack = STACKSIZE;
+    threadControlBlock->threadStack->stack_pointer = malloc(threadControlBlock->threadStack->sizeOfStack);
+    threadControlBlock->threadStack->base_pointer = threadControlBlock->threadStack->stack_pointer;
+    threadControlBlock->threadID = threadId++;
+    threadControlBlock->threadPriority = -1; //??? Probably need some helper function here to figure this out based on the ready queue.
 	   // create a Thread Control Block
 	   // create and initialize the context of this thread
 	   // allocate heap space for this thread's stack
@@ -137,16 +162,6 @@ static void sched_PSJF()
 	return;
 }
 
-/* Preemptive MLFQ scheduling algorithm */
-/* Graduate Students Only */
-static void sched_MLFQ() {
-	// YOUR CODE HERE
-	
-	// Your own implementation of MLFQ
-	// (feel free to modify arguments and return types)
-
-	return;
-}
 
 // Feel free to add any other functions you need
 
