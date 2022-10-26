@@ -23,18 +23,11 @@
 
 typedef uint mypthread_t;
 
-struct thread_stack {
-    void *stack_pointer;
-    void *base_pointer;
-    size_t sizeOfStack; // Will be a default, constant value.
-};
-
 	/* add important states in a thread control block */
 typedef struct threadControlBlock {
     bool isRunning;
 	pid_t threadID;
     uint threadPriority;
-    struct thread_stack *threadStack;
     ucontext_t *currentContext;
 	ucontext_t *threadContext;
 } tcb;

@@ -28,15 +28,14 @@ int mypthread_create(mypthread_t * thread, pthread_attr_t * attr, void *(*functi
     ucontext_t *ucontext_thread = malloc(sizeof(ucontext_t));
     getcontext(currentContext);
     makecontext(ucontext_thread, (void (*)(void *)) function, 1, arg); // Might need a wrapper function?
+    ucontext_thread->uc_stack.ss_size = STACKSIZE;
+    ucontext_thread->uc_stack.ss_sp = malloc(ucontext_thread->uc_stack.ss_size);
+    ucontext_thread->uc_stack.ss_flags = 0;
 
 
     tcb *threadControlBlock = malloc(sizeof (tcb));
     threadControlBlock->currentContext = currentContext;
     threadControlBlock->threadContext = ucontext_thread;
-    threadControlBlock->threadStack = malloc(sizeof(struct thread_stack));
-    threadControlBlock->threadStack->sizeOfStack = STACKSIZE;
-    threadControlBlock->threadStack->stack_pointer = malloc(threadControlBlock->threadStack->sizeOfStack);
-    threadControlBlock->threadStack->base_pointer = threadControlBlock->threadStack->stack_pointer;
     threadControlBlock->threadID = threadId++;
     threadControlBlock->threadPriority = -1; //??? Probably need some helper function here to figure this out based on the ready queue.
 	   // create a Thread Control Block
