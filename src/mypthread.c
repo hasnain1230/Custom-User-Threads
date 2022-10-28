@@ -8,11 +8,42 @@
 #include "mypthread.h"
 #include <stdatomic.h>
 #include <ucontext.h>
+#include <assert.h>
 
 #define STACKSIZE (2 * 1024 * 1024) // According to man pthread_attr_init, the default stack size is 2MB. Keeping with this, we'll initialize the stack size to 2MiB as well, converted to bytes.
 
 // INITAILIZE ALL YOUR VARIABLES HERE
 // YOUR CODE HERE
+
+void checkMalloc(void *ptr) {
+    if (ptr == NULL) {
+        perror("Malloc failed.");
+        exit(1);
+    }
+}
+
+struct Queue *initQueue() {
+    struct Queue *queue = malloc(sizeof(struct Queue));
+    queue->currentSize = 0;
+    queue->head = NULL;
+    queue->tail = NULL;
+
+    return queue;
+}
+
+bool isEmpty(struct Queue *queue) {
+    return queue->currentSize == 0;
+}
+
+bool normalEnqueue(struct Queue *queue, tcb *threadControlBlock) {
+    struct Node *node = malloc(sizeof(struct Node));
+
+    if (isEmpty(queue)) {
+
+    }
+}
+
+
 
 /*
 void startFunction(void *(*function) (void*), void *args) {
@@ -23,20 +54,21 @@ void startFunction(void *(*function) (void*), void *args) {
 /* create a new thread */
 int mypthread_create(mypthread_t * thread, pthread_attr_t * attr, void *(*function) (void*), void *arg) {
     static pid_t threadId = 0;
-    bool isRunning = false;
     ucontext_t *currentContext = malloc(sizeof(ucontext_t));
     ucontext_t *ucontext_thread = malloc(sizeof(ucontext_t));
     getcontext(currentContext);
-    makecontext(ucontext_thread, (void (*)(void *)) function, 1, arg); // Might need a wrapper function?
+    getcontext(ucontext_thread);
     ucontext_thread->uc_stack.ss_size = STACKSIZE;
     ucontext_thread->uc_stack.ss_sp = malloc(ucontext_thread->uc_stack.ss_size);
     ucontext_thread->uc_stack.ss_flags = 0;
 
+    makecontext(ucontext_thread, (void (*) (void *)) function, 1, arg); // Might need a wrapper function?
 
     tcb *threadControlBlock = malloc(sizeof (tcb));
     threadControlBlock->currentContext = currentContext;
     threadControlBlock->threadContext = ucontext_thread;
     threadControlBlock->threadID = threadId++;
+    threadControlBlock->isRunning = false;
     threadControlBlock->threadPriority = -1; //??? Probably need some helper function here to figure this out based on the ready queue.
 	   // create a Thread Control Block
 	   // create and initialize the context of this thread
@@ -85,6 +117,7 @@ int mypthread_join(mypthread_t thread, void **value_ptr)
 /* initialize the mutex lock */
 int mypthread_mutex_init(mypthread_mutex_t *mutex, const pthread_mutexattr_t *mutexattr)
 {
+    assert(mutexattr == NULL);
 	// YOUR CODE HERE
 	
 	//initialize data structures for this mutex

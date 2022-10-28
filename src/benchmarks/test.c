@@ -12,7 +12,9 @@
  */
 int main(int argc, char **argv) {
 
-	/* Implement HERE */
+    mypthread_t mypthread;
+    mypthread.
+    mypthread_create()
 
 	return 0;
 }
