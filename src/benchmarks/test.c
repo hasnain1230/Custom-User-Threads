@@ -10,11 +10,7 @@
  * You can modify and use this program as much as possible.
  * This will not be graded.
  */
-int main(int argc, char **argv) {
 
-    mypthread_t mypthread;
-    mypthread.
-    mypthread_create()
-
-	return 0;
+int main (void) {
+    printf("%d", SCHED);
 }

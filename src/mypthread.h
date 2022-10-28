@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdatomic.h>
+#include <ucontext.h>
 
 
 typedef uint mypthread_t;
@@ -40,7 +41,7 @@ typedef struct mypthread_mutex_t {
 struct Node {
     void *data;
     size_t dataSize;
-    struct Node *next;
+    struct Node *prev, *next;
 };
 
 struct Queue {

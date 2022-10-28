@@ -9,6 +9,7 @@
 #include <stdatomic.h>
 #include <ucontext.h>
 #include <assert.h>
+#include <string.h>
 
 #define STACKSIZE (2 * 1024 * 1024) // According to man pthread_attr_init, the default stack size is 2MB. Keeping with this, we'll initialize the stack size to 2MiB as well, converted to bytes.
 
@@ -35,12 +36,94 @@ bool isEmpty(struct Queue *queue) {
     return queue->currentSize == 0;
 }
 
-bool normalEnqueue(struct Queue *queue, tcb *threadControlBlock) {
+void normalEnqueue(struct Queue *queue, tcb *threadControlBlock) {
+    assert(threadControlBlock != NULL);
     struct Node *node = malloc(sizeof(struct Node));
+    checkMalloc(node);
+
+    node->data = threadControlBlock;
+    node->dataSize = sizeof(tcb);
+    node->next = NULL;
 
     if (isEmpty(queue)) {
-
+        queue->head = queue->tail = node;
+        queue->currentSize++;
+        return;
     }
+
+    queue->tail->next = node;
+    node->prev = queue->tail;
+    queue->tail = node;
+    queue->currentSize++;
+}
+
+void *normalDequeue(struct Queue *queue) {
+    if (isEmpty(queue)) {
+        return NULL;
+    }
+
+    struct Node *nodeToDequeue = queue->head;
+    void *dataToReturn = malloc(nodeToDequeue->dataSize);
+    checkMalloc(dataToReturn);
+    dataToReturn = memcpy(dataToReturn, nodeToDequeue->data, nodeToDequeue->dataSize);
+
+    queue->head = queue->head->next;
+
+    if (queue->head == NULL) {
+        queue->tail = NULL;
+    }
+
+    free(nodeToDequeue->data);
+    free(nodeToDequeue);
+
+    queue->currentSize--;
+
+    return dataToReturn;
+}
+
+void preemptiveEnqueue(struct Queue *queue, tcb *threadControlBlock) {
+    assert(threadControlBlock != NULL);
+
+    if (isEmpty(queue)) {
+        normalEnqueue(queue, threadControlBlock);
+        return;
+    }
+
+    struct Node *ptr = queue->head;
+
+    struct Node *node = malloc(sizeof(struct Node));
+    checkMalloc(node);
+
+    node->data = threadControlBlock;
+    node->dataSize = sizeof(tcb);
+    node->next = NULL;
+    node->prev = NULL;
+
+    uint threadPriority = threadControlBlock->threadPriority;
+
+    if (threadPriority < ((tcb *) queue->head->data)->threadPriority) {
+        node->next = queue->head;
+        node->prev = NULL;
+        queue->head->prev = node;
+        queue->currentSize++;
+        return;
+    }
+
+    while (ptr != NULL) {
+        if (threadPriority < ((tcb *) ptr->data)->threadPriority) {
+            node->next = ptr;
+            node->prev = ptr->prev;
+            ptr->prev->next = node;
+            ptr->prev = node;
+            queue->currentSize++;
+            return;
+        }
+
+        ptr = ptr->next;
+    }
+
+    node->prev = queue->tail; // In case we need to enqueue at the end.
+    queue->tail->next = node;
 }
 
 
@@ -62,7 +145,7 @@ int mypthread_create(mypthread_t * thread, pthread_attr_t * attr, void *(*functi
     ucontext_thread->uc_stack.ss_sp = malloc(ucontext_thread->uc_stack.ss_size);
     ucontext_thread->uc_stack.ss_flags = 0;
 
-    makecontext(ucontext_thread, (void (*) (void *)) function, 1, arg); // Might need a wrapper function?
+    makecontext(ucontext_thread, (void *) function, 1, arg); // Might need a wrapper function?
 
     tcb *threadControlBlock = malloc(sizeof (tcb));
     threadControlBlock->currentContext = currentContext;
