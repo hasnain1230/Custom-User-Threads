@@ -11,9 +11,17 @@
  * This will not be graded.
  */
 
+void repeat(){
+	printf("Hello");
+}
 
 
 int main(int argc, char **argv) {
+
+
+	//pthread_t threadID;
+	//pthread_create(&threadID,NULL,(void*) repeat,NULL);
+
 	create_schedule_context();
 	setup_timer();
 	while(1){

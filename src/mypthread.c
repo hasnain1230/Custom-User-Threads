@@ -262,6 +262,19 @@ int mypthread_mutex_destroy(mypthread_mutex_t *mutex)
 };
 
 
+
+
+
+
+
+
+
+
+
+
+/* Scheduler helper method */
+
+
 /* setup new interval timer*/
 void setup_timer() {
 	
@@ -270,9 +283,10 @@ void setup_timer() {
 	sigemptyset(&sa.sa_mask);
 	sa.sa_flags = 0;
     // At every quantum interval the signal will be handled by switching to the schedule context
-	sa.sa_handler = schedule;
+	sa.sa_handler = scheduler_interrupt_handler;
 	sigaction(SIGALRM,&sa,NULL);
 
+    // The timer has been setup to run for the quantum time period.
 	timer.it_value.tv_sec = 0;
 	timer.it_value.tv_usec = QUANTUM;
 	timer.it_interval.tv_sec = 0;
@@ -280,8 +294,6 @@ void setup_timer() {
 	setitimer(ITIMER_REAL,&timer,NULL);
 
 
-	// The timer has been setup to run
-	// How can we disable timer when running library code?
 }
 
 
@@ -303,6 +315,22 @@ void restart_timer() {
 	setitimer(ITIMER_REAL,&timer,NULL);
 }
 
+/* Handle the timer interrupt and run scheduler*/
+void scheduler_interrupt_handler(){
+
+    // Before entering library code the scheduler interrupt timer must be stopped
+	stop_timer();
+
+    // Need to do the following:
+    // Get current tcb pointer
+    // Increase the priority of the threadControlBlock;
+    // Send the current threadControlBlock to the back of the queue
+    // Call swapcontext(threadControlBlock->threadContext,scheduler_context) 
+    //      -> saves the currently running context into threadControlBlock, and switches to the scheduler's context
+    
+
+
+}
 
 
 
@@ -315,6 +343,8 @@ void create_schedule_context() {
     scheduler_context->uc_stack.ss_sp = malloc(STACKSIZE);
     scheduler_context->uc_stack.ss_size = STACKSIZE;
     scheduler_context->uc_stack.ss_flags = 0;
+
+    // What should uc_link actually point to?
     scheduler_context->uc_link = 0;
 
 
@@ -327,19 +357,28 @@ void create_schedule_context() {
 
 
 
+
+
 /* scheduler */
 static void schedule()
 {
-	// YOUR CODE HERE
-    stop_timer();
-    printf("Schedule called, stoping timer\n");
-    printf("Interrupted, running scheduler now\n");
-    restart_timer();
+	// Do we need to call stop_timer() because the scheduler_interrupt_handler() already stops the timer
+    //stop_timer();
+
+
+
+
+    // How long should the scheduler run, should it loop until there are no more threads in the queue? Maybe like this:
+    // while(queue->currentSize > 0) {
+    //      Call the correct scheduling algorithm, the algorithm will update the global thread tcb pointer
+    //      Swap scheduler context with the context pointed to by the global thread tcb pointer
+    //      Restart timer so that the scheduler can run again in the future
+    //{
 	
 	// each time a timer signal occurs your library should switch in to this context
 	
 	// be sure to check the SCHED definition to determine which scheduling algorithm you should run
-	//   i.e. RR, PSJF or MLFQ
+	//   i.e. RR, PSJF 
 
 	return;
 }
@@ -347,10 +386,20 @@ static void schedule()
 /* Round Robin scheduling algorithm */
 static void sched_RR()
 {
-	// YOUR CODE HERE
-	
-	// Your own implementation of RR
-	// (feel free to modify arguments and return types)
+    // The scheduler_interrupt_handler() has already stopp the clock, no need to stop it. Safe to continue working.
+
+
+    // Handling RR scheduling:
+    // Dequeue the next thread control block from the queue
+    // Check if thread is ready, if it is ready then it will be the next to run
+    //          Change status to running
+    // Save the thread to be run's tcb to a global pointer to keep track.
+    // The schedule() will take the thread that was just saved at the global pointer and it will be ran.
+
+
+
+    // Finished running library code, context switch to the thread to be run and restart scheduler interrupt timer
+    //restart_timer();
 	
 	return;
 }
@@ -359,9 +408,12 @@ static void sched_RR()
 static void sched_PSJF()
 {
 	// YOUR CODE HERE
-
+    
 	// Your own implementation of PSJF (STCF)
 	// (feel free to modify arguments and return types)
+    
+    // Finished running library code, context switch to the thread to be run and restart scheduler interrupt timer
+    restart_timer();
 
 	return;
 }
