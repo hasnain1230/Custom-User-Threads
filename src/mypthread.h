@@ -26,7 +26,7 @@ typedef uint mypthread_t;
 
 	/* add important states in a thread control block */
 typedef struct threadControlBlock {
-    bool isRunning;
+    ushort status; // 0 = ready, 1 = running, 2 = blocked, 3 = terminated
 	pid_t threadID;
     uint threadPriority;
     ucontext_t *currentContext;
@@ -35,19 +35,8 @@ typedef struct threadControlBlock {
 
 /* mutex struct definition */
 typedef struct mypthread_mutex_t {
-    bool flag;
+    atomic_bool lock;
 } mypthread_mutex_t;
-
-struct Node {
-    void *data;
-    size_t dataSize;
-    struct Node *prev, *next;
-};
-
-struct Queue {
-    struct Node *head, *tail;
-    size_t currentSize;
-};
 
 // Feel free to add your own auxiliary data structures (linked list or queue etc...)
 
