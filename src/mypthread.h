@@ -26,7 +26,8 @@ typedef uint mypthread_t;
 
 	/* add important states in a thread control block */
 typedef struct threadControlBlock {
-    bool isRunning;
+    //bool isRunning;
+    short status;
 	pid_t threadID;
     uint threadPriority;
     ucontext_t *currentContext;

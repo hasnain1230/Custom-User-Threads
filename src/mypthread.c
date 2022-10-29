@@ -12,6 +12,7 @@
 #include <sys/time.h>
 #include <string.h>
 #include <assert.h>
+#include "queue.h"
 
 #define STACKSIZE (2 * 1024 * 1024) // According to man pthread_attr_init, the default stack size is 2MB. Keeping with this, we'll initialize the stack size to 2MiB as well, converted to bytes.
 #define QUANTUM 25000 // Quantum is set to 25ms = 25000 us
@@ -19,24 +20,29 @@
 struct sigaction sa;
 struct itimerval timer;
 static void schedule();
-int schedulerInitalized = 0;
-ucontext_t* scheduler_context;
+static int schedulerInitalized = 0;
+static ucontext_t* scheduler_context;
+istatic nt continue_scheduling = 1;
+static tcb* currentThreadControlBlock = NULL;
+static struct Queue* readyQueue = initQueue();
+static ucontext_t* default_context;
+
 
 #define STACKSIZE (2 * 1024 * 1024) // According to man pthread_attr_init, the default stack size is 2MB. Keeping with this, we'll initialize the stack size to 2MiB as well, converted to bytes.
 
 #ifndef PSJF
-#define RR 1
+#define SCHED 1
 #else
-#define RR 0
+#define SCHED 0
 #endif
 
 // Keep track of the number of threads so that the threadIDs are assigned properly
 int threadCount = 0;
 
 
-// Required to periodically switch to the scheduler context
-// Need to save the scheduler context globally to run it
-ucontext_t schedulerContext;
+// // Required to periodically switch to the scheduler context
+// // Need to save the scheduler context globally to run it
+// ucontext_t schedulerContext;
 
 void checkMalloc(void *ptr) {
     if (ptr == NULL) {
@@ -194,9 +200,30 @@ void scheduler_interrupt_handler(){
     // Increase the priority of the threadControlBlock;
     // Send the current threadControlBlock to the back of the queue
     // Call swapcontext(threadControlBlock->threadContext,scheduler_context)
-    //      -> saves the currently running context into threadControlBlock, and switches to the scheduler's context
+    //      -> this function saves the currently running context into threadControlBlock->threadContext, and switches to the scheduler's context
 
+    
+    if(currentThreadControlBlock == NULL) {
+        // No thread was executing, just swap to the schedule() context
+        swapcontext(default_context,scheduler_context);
+    }
 
+    else{
+        // There is currently a thread executing
+        // Increase the threads priority, and enqueue to the back of the queue
+        //      if the scheduling algorithm is PSJF, then use priority enqueue, otherwise use normal enqueue
+        if(SCHED == 1){
+            currentThreadControlBlock->threadPriority++;
+            priorityEnqueue(readyQueue,currentThreadControlBlock);
+        }
+
+        else{
+            normalEnqueue(readyQueue,currentThreadControlBlock);
+        }
+
+        // Now swap context from the currently running thread to the scheduler context
+        swapcontext(currentThreadControlBlock->threadContext,scheduler_context);
+    }
 
 }
 
@@ -262,32 +289,40 @@ static void schedule() {
     //      Swap scheduler context with the context pointed to by the global thread tcb pointer
     //      Restart timer so that the scheduler can run again in the future
     //{
+    
+    while(continue_scheduling == 1){
 
 
-    // each time a timer signal occurs your library should switch in to this context
-	// be sure to check the SCHED definition to determine which scheduling algorithm you should run
-	//   i.e. RR, PSJF 
+        if(readyQueue->currentSize > 0  && SCHED == 0) {
+            // Call the Round Robin scheduling algorithm
+            // If successfull, sets the currentThreadControlBlock variable to that of the next thread to run
+            sched_RR();
+            restart_timer();
+            swapcontext(scheduler_context,currentThreadControlBlock->threadContext);
+            
+        }
 
-	/* if (schedule == RR){
-		sched_RR();
-	}
+        else if(readyQueue->currentSize > 0 && SCHED == 1){
+            // Call the PSJF scheduling algorithm
+            // If successfull, sets the currentThreadControlblock variable to that of the next thread to run.
+            sched_PSJF();
+            restart_timer();
+            swapcontext(scheduler_context,currentThreadControlBlock->threadContext);
+        }
 
-	if (schedule == PSJF){
-		sched_PSJF();
-	}
+        else{
+            // There is no thread in the ready queue
+            // Switch to the default context
+            swapcontext(scheduler_context,default_context);
+        }
 
-	if (schedule == MLFQ){
-		sched_MLFQ();
-	} */
 
-	#ifndef RR
-		#ifndef PSJF
-			sched_MLFQ();
-		#else
-			sched_RR();
-		#endif
-		sched_PSJF();
-	#endif
+
+    }
+    
+
+
+
 
 	return;
 }
@@ -295,15 +330,15 @@ static void schedule() {
 /* Round Robin scheduling algorithm */
 static void sched_RR()
 {
-    // The scheduler_interrupt_handler() has already stopp the clock, no need to stop it. Safe to continue working.
+    // The scheduler_interrupt_handler() has already stopped the clock, no need to stop it. Safe to continue working.
 
 
     // Handling RR scheduling:
     // Dequeue the next thread control block from the queue
-    // Check if thread is ready, if it is ready then it will be the next to run
-    //          Change status to running
     // Save the thread to be run's tcb to a global pointer to keep track.
     // The schedule() will take the thread that was just saved at the global pointer and it will be ran.
+
+    currentThreadControlBlock = normalDequeue(readyQueue);
 
 
 
@@ -320,9 +355,20 @@ static void sched_PSJF()
     
 	// Your own implementation of PSJF (STCF)
 	// (feel free to modify arguments and return types)
+
+
+    currentThreadControlBlock = normalDequeue(readyQueue);
+
+
+
+
+
+
+
+
     
     // Finished running library code, context switch to the thread to be run and restart scheduler interrupt timer
-    restart_timer();
+    //restart_timer();
 
 	return;
 }
