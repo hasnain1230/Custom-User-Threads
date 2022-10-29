@@ -17,61 +17,47 @@
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
+#include <stdatomic.h>
 #include <ucontext.h>
-
 
 
 typedef uint mypthread_t;
 
 	/* add important states in a thread control block */
-typedef struct threadControlBlock
-{
-	// YOUR CODE HERE	
-	
-	// thread Id
-	// thread status
-	// thread context
-	// thread stack
-	// thread priority
-	// And more ...
-
-	int threadID;
-	int status;
-	int priority;
-	ucontext_t* context;
-	void* stack;
-
-
+typedef struct threadControlBlock {
+    bool isRunning;
+	pid_t threadID;
+    uint threadPriority;
+    ucontext_t *currentContext;
+	ucontext_t *threadContext;
 } tcb;
 
 /* mutex struct definition */
-typedef struct mypthread_mutex_t
-{
-	// If lock == 0, then no thread has the lock on the mutex
-	// If look == 1,then there is a lock on the mutex
-	int lock;
-
-	// Should we include a queue for the mutex within the struct?
-	
+typedef struct mypthread_mutex_t {
+    bool flag;
 } mypthread_mutex_t;
 
+struct Node {
+    void *data;
+    size_t dataSize;
+    struct Node *prev, *next;
+};
+
+struct Queue {
+    struct Node *head, *tail;
+    size_t currentSize;
+};
 
 // Feel free to add your own auxiliary data structures (linked list or queue etc...)
 
 
-// We need a queue data strcture to hold threads that are waiting for mutex
-typedef struct threadQueNode {
-	tcb* currentTCB;
-	threadQueNode* nextThreadNode;
-} threadQueNode;
-
-typedef struct mutexQueNode {
-	tcb* currentTCB;
-	threadQueuNode* nextThreadNode;
-} mutexQueNode;
-
 
 /* Function Declarations: */
+
+void setup_timer();
+void create_schedule_context();
+
 
 /* create a new thread */
 int mypthread_create(mypthread_t * thread, pthread_attr_t * attr, void *(*function)(void*), void * arg);

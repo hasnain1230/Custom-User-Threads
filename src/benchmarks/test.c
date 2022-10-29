@@ -10,9 +10,15 @@
  * You can modify and use this program as much as possible.
  * This will not be graded.
  */
-int main(int argc, char **argv) {
 
-	/* Implement HERE */
+
+
+int main(int argc, char **argv) {
+	create_schedule_context();
+	setup_timer();
+	while(1){
+		
+	}
 
 	return 0;
 }

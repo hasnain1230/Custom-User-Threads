@@ -1,66 +1,181 @@
 // File:	mypthread.c
 
 // List all group members' names:
+// Hasnain Ali...
 // iLab machine tested on:
 
+#define _XOPEN_SOURCE
 #include "mypthread.h"
+#include <stdatomic.h>
 #include <ucontext.h>
+#include <assert.h>
+#include <string.h>
+#include <signal.h>
+#include <sys/time.h>
+
+#define STACKSIZE (2 * 1024 * 1024) // According to man pthread_attr_init, the default stack size is 2MB. Keeping with this, we'll initialize the stack size to 2MiB as well, converted to bytes.
+
+
+
+
+#define QUANTUM 25000 // Quantum is set to 25ms = 25000 us
+
+struct sigaction sa;
+struct itimerval timer;
+static void schedule();
+int schedulerInitalized = 0;
+ucontext_t* scheduler_context;
+
+
+
+
+
+
 
 // INITAILIZE ALL YOUR VARIABLES HERE
 // YOUR CODE HERE
 
-#define STACKSIZE 30000
+void checkMalloc(void *ptr) {
+    if (ptr == NULL) {
+        perror("Malloc failed.");
+        exit(1);
+    }
+}
+
+struct Queue *initQueue() {
+    struct Queue *queue = malloc(sizeof(struct Queue));
+    queue->currentSize = 0;
+    queue->head = NULL;
+    queue->tail = NULL;
+
+    return queue;
+}
+
+bool isEmpty(struct Queue *queue) {
+    return queue->currentSize == 0;
+}
+
+void normalEnqueue(struct Queue *queue, tcb *threadControlBlock) {
+    assert(threadControlBlock != NULL);
+    struct Node *node = malloc(sizeof(struct Node));
+    checkMalloc(node);
+
+    node->data = threadControlBlock;
+    node->dataSize = sizeof(tcb);
+    node->next = NULL;
+
+    if (isEmpty(queue)) {
+        queue->head = queue->tail = node;
+        queue->currentSize++;
+        return;
+    }
+
+    queue->tail->next = node;
+    node->prev = queue->tail;
+    queue->tail = node;
+    queue->currentSize++;
+}
+
+void *normalDequeue(struct Queue *queue) {
+    if (isEmpty(queue)) {
+        return NULL;
+    }
+
+    struct Node *nodeToDequeue = queue->head;
+    void *dataToReturn = malloc(nodeToDequeue->dataSize);
+    checkMalloc(dataToReturn);
+    dataToReturn = memcpy(dataToReturn, nodeToDequeue->data, nodeToDequeue->dataSize);
+
+    queue->head = queue->head->next;
+
+    if (queue->head == NULL) {
+        queue->tail = NULL;
+    }
+
+    free(nodeToDequeue->data);
+    free(nodeToDequeue);
+
+    queue->currentSize--;
+
+    return dataToReturn;
+}
+
+void preemptiveEnqueue(struct Queue *queue, tcb *threadControlBlock) {
+    assert(threadControlBlock != NULL);
+
+    if (isEmpty(queue)) {
+        normalEnqueue(queue, threadControlBlock);
+        return;
+    }
+
+    struct Node *ptr = queue->head;
+
+    struct Node *node = malloc(sizeof(struct Node));
+    checkMalloc(node);
+
+    node->data = threadControlBlock;
+    node->dataSize = sizeof(tcb);
+    node->next = NULL;
+    node->prev = NULL;
+
+    uint threadPriority = threadControlBlock->threadPriority;
+
+    if (threadPriority < ((tcb *) queue->head->data)->threadPriority) {
+        node->next = queue->head;
+        node->prev = NULL;
+        queue->head->prev = node;
+        queue->currentSize++;
+        return;
+    }
+
+    while (ptr != NULL) {
+        if (threadPriority < ((tcb *) ptr->data)->threadPriority) {
+            node->next = ptr;
+            node->prev = ptr->prev;
+            ptr->prev->next = node;
+            ptr->prev = node;
+            queue->currentSize++;
+            return;
+        }
+
+        ptr = ptr->next;
+    }
+
+    node->prev = queue->tail; // In case we need to enqueue at the end.
+    queue->tail->next = node;
+}
 
 
-// Keep track of the number of threads so that the threadIDs are assigned properly
-int threadCount = 0;
 
-
-// Required to periodically switch to the scheduler context
-// Need to save the scheduler context globally to run it
-ucontext_t schedulerContext;
-
-
-
-// Need a queue to keep track of threads 
-
+/*
+void startFunction(void *(*function) (void*), void *args) {
+    function(args);
+}
+*/
 
 /* create a new thread */
-int mypthread_create(mypthread_t * thread, pthread_attr_t * attr, void *(*function)(void*), void * arg)
-{
-	   // YOUR CODE HERE	
-	
+int mypthread_create(mypthread_t * thread, pthread_attr_t * attr, void *(*function) (void*), void *arg) {
+    static pid_t threadId = 0;
+    ucontext_t *currentContext = malloc(sizeof(ucontext_t));
+    ucontext_t *ucontext_thread = malloc(sizeof(ucontext_t));
+    getcontext(currentContext);
+    getcontext(ucontext_thread);
+    ucontext_thread->uc_stack.ss_size = STACKSIZE;
+    ucontext_thread->uc_stack.ss_sp = malloc(ucontext_thread->uc_stack.ss_size);
+    ucontext_thread->uc_stack.ss_flags = 0;
+
+    makecontext(ucontext_thread, (void *) function, 1, arg); // Might need a wrapper function?
+
+    tcb *threadControlBlock = malloc(sizeof (tcb));
+    threadControlBlock->currentContext = currentContext;
+    threadControlBlock->threadContext = ucontext_thread;
+    threadControlBlock->threadID = threadId++;
+    threadControlBlock->isRunning = false;
+    threadControlBlock->threadPriority = -1; //??? Probably need some helper function here to figure this out based on the ready queue.
 	   // create a Thread Control Block
 	   // create and initialize the context of this thread
 	   // allocate heap space for this thread's stack
 	   // after everything is all set, push this thread into the ready queue
-
-		tcb* newTCB = (tcb*) malloc(sizeof(tcb*));
-		newTCB->threadID = threadCount + 1;
-		newTCB->context = (ucontext_t*) malloc(sizeof(ucontext_t*));
-		newTCB->stack = malloc(STACKSIZE);
-		newTCB->context->uc_stack.ss_sp = stack;
-		newTCB->context->uc_stack.ss_size = STACKSIZE;
-		newTCB->context->uc_stack.ss_flags = 0;
-		newTCB->priority = 1;
-		newTCB->status = 1;
-
-		getcontext(newTCB->context);
-
-		// HOW DO WE GET NUMBER OF ARGUMENTS PASS TO THREAD?
-		// THIS NEEDS TO BE PLACED WHERE THE 1 IS CURRENTLY BELOW
-		makecontext(newTCB->context,function,1);
-
-		// Increment the number of threads
-		threadCount++;
-
-
-		// The tcb has been set up, now push it into the ready queue
-
-
-
-
-		
 
 
 	return 0;
@@ -104,6 +219,7 @@ int mypthread_join(mypthread_t thread, void **value_ptr)
 /* initialize the mutex lock */
 int mypthread_mutex_init(mypthread_mutex_t *mutex, const pthread_mutexattr_t *mutexattr)
 {
+    assert(mutexattr == NULL);
 	// YOUR CODE HERE
 	
 	//initialize data structures for this mutex
@@ -120,28 +236,16 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex)
 		// if the mutex is acquired successfully, return
 		// if acquiring mutex fails, put the current thread on the blocked/waiting list and context switch to the scheduler thread
 		
-		// Check if the mutex is locked or unlocked
-		// If mutex is unlocked then you can simply give the lock to the thread and return
-		// If mutex is already locked, then put current thread on blocked/waiting list and context switch to the scheduler thread
-
-
-
 		return 0;
 };
 
 /* release the mutex lock */
 int mypthread_mutex_unlock(mypthread_mutex_t *mutex)
 {
-	// YOUR CODE HERE
+	// YOUR CODE HERE	
+	
 	// update the mutex's metadata to indicate it is unlocked
 	// put the thread at the front of this mutex's blocked/waiting queue in to the run queue
-
-
-
-	// Set the lock status of the mutex to 0
-	// Get the blocked/waiting queue and take the thread at the front of this queue (nextThread)
-	// Take the nextThread and queue it into the run queue
-
 
 	return 0;
 };
@@ -158,7 +262,68 @@ int mypthread_mutex_destroy(mypthread_mutex_t *mutex)
 };
 
 
+/* setup new interval timer*/
+void setup_timer() {
+	
+    // Set up the interrupt signal
+	memset(&sa,0,sizeof(sa));
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+    // At every quantum interval the signal will be handled by switching to the schedule context
+	sa.sa_handler = schedule;
+	sigaction(SIGALRM,&sa,NULL);
 
+	timer.it_value.tv_sec = 0;
+	timer.it_value.tv_usec = QUANTUM;
+	timer.it_interval.tv_sec = 0;
+	timer.it_interval.tv_usec = QUANTUM;
+	setitimer(ITIMER_REAL,&timer,NULL);
+
+
+	// The timer has been setup to run
+	// How can we disable timer when running library code?
+}
+
+
+/* Before running any library code, stop the timer so that library code does not get interrupt*/
+void stop_timer() {
+ 	timer.it_value.tv_sec = 0;
+	timer.it_value.tv_usec = 0;
+	timer.it_interval.tv_sec = 0;
+	timer.it_interval.tv_usec = 0;
+	setitimer(ITIMER_REAL,&timer,NULL);   
+}
+
+/* After finishing running library code, restart timer to allow scheduler to run periodically*/
+void restart_timer() {
+    timer.it_value.tv_sec = 0;
+	timer.it_value.tv_usec = QUANTUM;
+	timer.it_interval.tv_sec = 0;
+	timer.it_interval.tv_usec = QUANTUM;
+	setitimer(ITIMER_REAL,&timer,NULL);
+}
+
+
+
+
+/* The scheduler's context must be created before it can be sweitched into periodically*/
+void create_schedule_context() {
+    scheduler_context = (ucontext_t*) malloc(sizeof(ucontext_t));
+
+    getcontext(scheduler_context);
+
+    scheduler_context->uc_stack.ss_sp = malloc(STACKSIZE);
+    scheduler_context->uc_stack.ss_size = STACKSIZE;
+    scheduler_context->uc_stack.ss_flags = 0;
+    scheduler_context->uc_link = 0;
+
+
+    makecontext(scheduler_context,schedule,0);
+
+    printf("Scheduler context has been setup\n");
+
+
+}
 
 
 
@@ -166,6 +331,10 @@ int mypthread_mutex_destroy(mypthread_mutex_t *mutex)
 static void schedule()
 {
 	// YOUR CODE HERE
+    stop_timer();
+    printf("Schedule called, stoping timer\n");
+    printf("Interrupted, running scheduler now\n");
+    restart_timer();
 	
 	// each time a timer signal occurs your library should switch in to this context
 	
@@ -197,16 +366,6 @@ static void sched_PSJF()
 	return;
 }
 
-/* Preemptive MLFQ scheduling algorithm */
-/* Graduate Students Only */
-static void sched_MLFQ() {
-	// YOUR CODE HERE
-	
-	// Your own implementation of MLFQ
-	// (feel free to modify arguments and return types)
-
-	return;
-}
 
 // Feel free to add any other functions you need
 
