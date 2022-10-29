@@ -44,13 +44,6 @@ static struct Queue *blockedQueue = NULL;
 // // Need to save the scheduler context globally to run it
 // ucontext_t schedulerContext;
 
-void checkMalloc(void *ptr) {
-    if (ptr == NULL) {
-        perror("Malloc failed.");
-        exit(1);
-    }
-}
-
 int mypthread_create(mypthread_t *thread, pthread_attr_t *attr, void *(*function) (void*), void *arg) {
 
     if (threadCount == 0 && readyQueue == NULL && blockedQueue == NULL) {
@@ -213,7 +206,7 @@ void scheduler_interrupt_handler(){
         // There is currently a thread executing
         // Increase the threads priority, and enqueue to the back of the queue
         //      if the scheduling algorithm is PSJF, then use priority enqueue, otherwise use normal enqueue
-        if(SCHED == 1){
+        if (SCHED == 1) {
             currentThreadControlBlock->threadPriority++;
             priorityEnqueue(readyQueue,currentThreadControlBlock);
         }
@@ -298,7 +291,7 @@ static void schedule() {
         if(readyQueue->currentSize > 0  && SCHED == 0) {
             // Call the Round Robin scheduling algorithm
             // If successfull, sets the currentThreadControlBlock variable to that of the next thread to run
-            sched_RR();
+            // sched_RR();
             restart_timer();
             swapcontext(scheduler_context,currentThreadControlBlock->threadContext);
             
@@ -307,7 +300,7 @@ static void schedule() {
         else if(readyQueue->currentSize > 0 && SCHED == 1){
             // Call the PSJF scheduling algorithm
             // If successfull, sets the currentThreadControlblock variable to that of the next thread to run.
-            sched_PSJF();
+            // sched_PSJF();
             restart_timer();
             swapcontext(scheduler_context,currentThreadControlBlock->threadContext);
         }
