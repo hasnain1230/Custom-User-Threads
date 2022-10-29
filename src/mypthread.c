@@ -1,10 +1,22 @@
 // File:	mypthread.c
 
-// List all group members' names: Della Maret, ADD NAME , ADD NAME
+// List all group members' names: Della Maret, Hasnain Ali, ADD NAME
+// Hasnain Ali...
 // iLab machine tested on: ilab1.cs.rutgers.edu
 
 #include "mypthread.h"
+#include <stdatomic.h>
 #include <ucontext.h>
+#include <string.h>
+#include <assert.h>
+
+#define STACKSIZE (2 * 1024 * 1024) // According to man pthread_attr_init, the default stack size is 2MB. Keeping with this, we'll initialize the stack size to 2MiB as well, converted to bytes.
+
+#ifndef PSJF
+#define RR 1
+#else
+#define RR 0
+#endif
 
 #define STACKSIZE 30000
 
@@ -17,7 +29,6 @@ int threadCount = 0;
 // Need to save the scheduler context globally to run it
 ucontext_t schedulerContext;
 
-// Need a queue to keep track of threads 
 
 /* create a new thread */
 int mypthread_create(mypthread_t * thread, pthread_attr_t * attr, void *(*function)(void*), void * arg)
@@ -47,6 +58,7 @@ int mypthread_create(mypthread_t * thread, pthread_attr_t * attr, void *(*functi
 	threadCount++;
 
 	// The tcb has been set up, now push it into the ready queue
+  
 	return 0;
 };
 
@@ -86,6 +98,7 @@ int mypthread_join(mypthread_t thread, void **value_ptr)
 /* initialize the mutex lock */
 int mypthread_mutex_init(mypthread_mutex_t *mutex, const pthread_mutexattr_t *mutexattr)
 {
+    assert(mutexattr == NULL);
 	// YOUR CODE HERE
 	
 	//initialize data structures for this mutex
@@ -180,16 +193,6 @@ static void sched_PSJF()
 	return;
 }
 
-/* Preemptive MLFQ scheduling algorithm */
-/* Graduate Students Only */
-static void sched_MLFQ() {
-	// YOUR CODE HERE
-	
-	// Your own implementation of MLFQ
-	// (feel free to modify arguments and return types)
-
-	return;
-}
 
 // Feel free to add any other functions you need
 
