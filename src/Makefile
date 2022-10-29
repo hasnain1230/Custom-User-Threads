@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -g -std=c99 -Wall -Wvla -Wextra -Wundef -Wshadow -Wpointer-arith -O2 -fexceptions -fsanitize=address,undefined
+CFLAGS = -g
 AR = ar -rcv
 RANLIB = ranlib
 
