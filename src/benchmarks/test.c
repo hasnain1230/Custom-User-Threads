@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include "../mypthread.h"
+#include "../queue.h"
 
 /* A scratch program template on which to call and
  * test mypthread library functions as you implement
@@ -11,22 +13,28 @@
  * This will not be graded.
  */
 
-void repeat(){
-	printf("Hello");
-}
+int main (void) {
+    tcb *threadControlBlock = malloc(sizeof(tcb));
+    threadControlBlock->isRunning = true;
+    threadControlBlock->threadID = 1;
+    threadControlBlock->threadPriority = 40;
+    threadControlBlock->currentContext = NULL;
+    threadControlBlock->threadContext = NULL;
+
+    tcb *threadControlBlock1 = malloc(sizeof(tcb));
+    threadControlBlock1->isRunning = true;
+    threadControlBlock1->threadID = 2;
+    threadControlBlock1->threadPriority = 20;
+    threadControlBlock1->currentContext = NULL;
+    threadControlBlock1->threadContext = NULL;
 
 
-int main(int argc, char **argv) {
+    struct Queue *queue = initQueue();
+    priorityEnqueue(queue, threadControlBlock);
+
+    tcb *tcb1 = (tcb *) normalDequeue(queue);
+    printf("Thread ID: %d\n", tcb1->threadPriority);
 
 
-	//pthread_t threadID;
-	//pthread_create(&threadID,NULL,(void*) repeat,NULL);
-
-	create_schedule_context();
-	setup_timer();
-	while(1){
-		
-	}
-
-	return 0;
+    free(queue);
 }
