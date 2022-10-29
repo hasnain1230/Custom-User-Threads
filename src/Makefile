@@ -5,21 +5,18 @@ RANLIB = ranlib
 
 SCHED = RR
 
-all: queue.o mypthread.a
+all: mypthread.a
 
-mypthread.a: mypthread.o
-	$(AR) libmypthread.a mypthread.o # Generate an archive to link
-	$(RANLIB) libmypthread.a # Generate an index table
+mypthread.a: mypthread.o # Generate an archive to link and Generate an index table
+	$(AR) libmypthread.a queue.o mypthread.o
+	$(RANLIB) libmypthread.a
 
 mypthread.o: mypthread.h
 
-queue.o: queue.h queue.c
-	$(CC) $(CFLAGS) -c queue.c
-
 ifeq ($(SCHED), RR)
-	$(CC) -pthread $(CFLAGS) queue.o mypthread.c
+	$(CC) -pthread -c $(CFLAGS) queue.c mypthread.c
 else ifeq ($(SCHED), PSJF)
-	$(CC) -pthread $(CFLAGS) -DPSJF queue.o mypthread.c
+	$(CC) -pthread $(CFLAGS) -DPSJF mypthread.c
 else ifeq ($(SCHED), MLFQ) # For the grad student class
 	$(CC) -pthread $(CFLAGS) -DMLFQ mypthread.c
 else
