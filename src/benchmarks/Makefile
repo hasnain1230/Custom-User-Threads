@@ -17,5 +17,10 @@ external_cal:
 test:
 	$(CC) $(CFLAGS) -DRR -pthread -o test test.c -L../ -lmypthread
 
+test_queue: ../queue.c test.c
+	$(CC) -c $(CFLAGS) ../queue.c
+	$(CC) -c $(CFLAGS) test.c
+	$(CC) $(CFLAGS) queue.o test.o -o test_queue
+
 clean:
 	rm -rf testcase test parallel_cal vector_multiply external_cal *.o ./record/

@@ -15,7 +15,7 @@ mypthread.o: mypthread.h
 
 ifeq ($(SCHED), RR)
 	$(CC) -pthread $(CFLAGS) mypthread.c
-else ifeq ($(SCHED), PSJF) # For the grad student class
+else ifeq ($(SCHED), PSJF)
 	$(CC) -pthread $(CFLAGS) -DPSJF mypthread.c
 else ifeq ($(SCHED), MLFQ) # For the grad student class
 	$(CC) -pthread $(CFLAGS) -DMLFQ mypthread.c

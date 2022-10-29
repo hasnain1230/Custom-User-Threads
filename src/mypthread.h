@@ -38,16 +38,6 @@ typedef struct mypthread_mutex_t {
     bool flag;
 } mypthread_mutex_t;
 
-struct Node {
-    void *data;
-    size_t dataSize;
-    struct Node *prev, *next;
-};
-
-struct Queue {
-    struct Node *head, *tail;
-    size_t currentSize;
-};
 
 // Feel free to add your own auxiliary data structures (linked list or queue etc...)
 

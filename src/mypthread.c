@@ -4,14 +4,19 @@
 // Hasnain Ali...
 // iLab machine tested on:
 
-#define _XOPEN_SOURCE
 #include "mypthread.h"
 #include <stdatomic.h>
 #include <ucontext.h>
-#include <assert.h>
 #include <string.h>
+#include <assert.h>
 
 #define STACKSIZE (2 * 1024 * 1024) // According to man pthread_attr_init, the default stack size is 2MB. Keeping with this, we'll initialize the stack size to 2MiB as well, converted to bytes.
+
+#ifndef PSJF
+#define RR 1
+#else
+#define RR 0
+#endif
 
 // INITAILIZE ALL YOUR VARIABLES HERE
 // YOUR CODE HERE
@@ -22,110 +27,6 @@ void checkMalloc(void *ptr) {
         exit(1);
     }
 }
-
-struct Queue *initQueue() {
-    struct Queue *queue = malloc(sizeof(struct Queue));
-    queue->currentSize = 0;
-    queue->head = NULL;
-    queue->tail = NULL;
-
-    return queue;
-}
-
-bool isEmpty(struct Queue *queue) {
-    return queue->currentSize == 0;
-}
-
-void normalEnqueue(struct Queue *queue, tcb *threadControlBlock) {
-    assert(threadControlBlock != NULL);
-    struct Node *node = malloc(sizeof(struct Node));
-    checkMalloc(node);
-
-    node->data = threadControlBlock;
-    node->dataSize = sizeof(tcb);
-    node->next = NULL;
-
-    if (isEmpty(queue)) {
-        queue->head = queue->tail = node;
-        queue->currentSize++;
-        return;
-    }
-
-    queue->tail->next = node;
-    node->prev = queue->tail;
-    queue->tail = node;
-    queue->currentSize++;
-}
-
-void *normalDequeue(struct Queue *queue) {
-    if (isEmpty(queue)) {
-        return NULL;
-    }
-
-    struct Node *nodeToDequeue = queue->head;
-    void *dataToReturn = malloc(nodeToDequeue->dataSize);
-    checkMalloc(dataToReturn);
-    dataToReturn = memcpy(dataToReturn, nodeToDequeue->data, nodeToDequeue->dataSize);
-
-    queue->head = queue->head->next;
-
-    if (queue->head == NULL) {
-        queue->tail = NULL;
-    }
-
-    free(nodeToDequeue->data);
-    free(nodeToDequeue);
-
-    queue->currentSize--;
-
-    return dataToReturn;
-}
-
-void preemptiveEnqueue(struct Queue *queue, tcb *threadControlBlock) {
-    assert(threadControlBlock != NULL);
-
-    if (isEmpty(queue)) {
-        normalEnqueue(queue, threadControlBlock);
-        return;
-    }
-
-    struct Node *ptr = queue->head;
-
-    struct Node *node = malloc(sizeof(struct Node));
-    checkMalloc(node);
-
-    node->data = threadControlBlock;
-    node->dataSize = sizeof(tcb);
-    node->next = NULL;
-    node->prev = NULL;
-
-    uint threadPriority = threadControlBlock->threadPriority;
-
-    if (threadPriority < ((tcb *) queue->head->data)->threadPriority) {
-        node->next = queue->head;
-        node->prev = NULL;
-        queue->head->prev = node;
-        queue->currentSize++;
-        return;
-    }
-
-    while (ptr != NULL) {
-        if (threadPriority < ((tcb *) ptr->data)->threadPriority) {
-            node->next = ptr;
-            node->prev = ptr->prev;
-            ptr->prev->next = node;
-            ptr->prev = node;
-            queue->currentSize++;
-            return;
-        }
-
-        ptr = ptr->next;
-    }
-
-    node->prev = queue->tail; // In case we need to enqueue at the end.
-    queue->tail->next = node;
-}
-
 
 
 /*
