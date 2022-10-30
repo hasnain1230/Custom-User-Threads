@@ -2,8 +2,14 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <stdbool.h>
-#include "../mypthread.h"
+#include <pthread.h>
 #include "../queue.h"
+
+#ifndef PSJF
+#define SCHED 0 // Indicates round-robin scheduling
+#else
+#define SCHED 1 // Indicates PSJF scheduling
+#endif
 
 /* A scratch program template on which to call and
  * test mypthread library functions as you implement
@@ -13,28 +19,54 @@
  * This will not be graded.
  */
 
+void function1() {
+    while(1){
+        printf("Function 1 running\n");
+        sleep(10);
+    }
+}
+
+void function2()
+{
+    while(1) {
+        printf("Function 2 running\n");
+        sleep(10);
+    }
+
+
+}
+
+
+void function3()
+{
+    while(1){
+        printf("Function 3 running\n");
+        sleep(10);
+        
+    }
+}
+
+
+void function4(){
+
+    while(1){
+        printf("Function 4 is working");
+        sleep(10);
+    }
+
+}
+
 int main (void) {
-    tcb *threadControlBlock = malloc(sizeof(tcb));
-    threadControlBlock->isRunning = true;
-    threadControlBlock->threadID = 1;
-    threadControlBlock->threadPriority = 40;
-    threadControlBlock->currentContext = NULL;
-    threadControlBlock->threadContext = NULL;
-
-    tcb *threadControlBlock1 = malloc(sizeof(tcb));
-    threadControlBlock1->isRunning = true;
-    threadControlBlock1->threadID = 2;
-    threadControlBlock1->threadPriority = 20;
-    threadControlBlock1->currentContext = NULL;
-    threadControlBlock1->threadContext = NULL;
-
-
-    struct Queue *queue = initQueue();
-    priorityEnqueue(queue, threadControlBlock);
-
-    tcb *tcb1 = (tcb *) normalDequeue(queue);
-    printf("Thread ID: %d\n", tcb1->threadPriority);
-
-
-    free(queue);
+    pthread_t thread1,thread2,thread3,thread4;
+    pthread_create(&thread1,NULL,(void*) function1,NULL);
+    pthread_create(&thread2,NULL,(void*) function2,NULL);
+    pthread_create(&thread3,NULL,(void*) function3,NULL);
+    int  i = 0;
+    while(1){
+        i++;
+        if(i == 100) {
+            pthread_create(&thread4,NULL,(void*)function4,NULL);
+            sleep(10000);
+        }
+    }
 }

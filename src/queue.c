@@ -119,3 +119,16 @@ void priorityEnqueue(struct Queue *queue, tcb *threadControlBlock) {
     queue->tail = node;
     queue->currentSize++;
 }
+
+void freeQueue(struct Queue *queue) {
+    struct Node *ptr = queue->head;
+
+    while (ptr != NULL) {
+        struct Node *temp = ptr;
+        ptr = ptr->next;
+        free(temp->data);
+        free(temp);
+    }
+
+    free(queue);
+}
