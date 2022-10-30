@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -g -w -Wall -fsanitize=address
 
-SCHED = RR
+SCHED = PSJF
 
 all:: parallel_cal vector_multiply external_cal test
 
