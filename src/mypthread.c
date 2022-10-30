@@ -30,7 +30,7 @@ static int schedulerInitalized = 0;
 
 //static ucontext_t* scheduler_context;
 static int continue_scheduling = 1;
-static tcb currentThreadControlBlock = NULL;
+static tcb *currentThreadControlBlock = NULL;
 //static ucontext_t* default_context;
 
 static ucontext_t *scheduler_context, *default_context;
@@ -122,30 +122,17 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t *attr, void *(*function
 
 /* current thread voluntarily surrenders its remaining runtime for other threads to use */
 int mypthread_yield() {
-    // Before entering library code the interrupt timer must be stopped
-
-        stop_timer();
-	// change current thread's state from Running to Ready
-	// save context of this thread to its thread control block
-	// switch from this thread's context to the scheduler's context
-	
-        // Change status of currently running thread from RUNNING (1) to READY (0)
-        currentThreadControlBlock->status = 0;
-        
-        // Call scheduler_interrupt handler
-        // This will save the currently running thread's context, put the currently running thread at the back of the ready queue
-        // and will swap to the sceduler context
-        scheduler_interrupt_handler(0);
-
-	
+    stop_timer();
+    currentThreadControlBlock->status = 0;
+    scheduler_interrupt_handler(0);
 
 	return 0;
 };
 
 /* terminate a thread */
 void mypthread_exit(void *value_ptr) {
-	// preserve the return value pointer if not NULL
-	// deallocate any dynamic memory allocated when starting this thread
+    // preserve the return value pointer if not NULL
+    // deallocate any dynamic memory allocated when starting this thread
 
     stop_timer();
 
@@ -168,8 +155,8 @@ void mypthread_exit(void *value_ptr) {
 
         int i = currentThreadControlBlock->numberOfThreadsWaitingToJoin;
         tcb* waitingThread;
-        
-       while(i > 1){
+
+        while(i > 1){
             // Get the threadID of the waitingThread
             --i;
             mypthread_t threadID = currentThreadControlBlock->threadsWaitingToJoin[i];
@@ -177,7 +164,7 @@ void mypthread_exit(void *value_ptr) {
             waitingThread = threads[threadID];
             // Set the waitingThread's status to READY
             waitingThread->status = 0;
-           
+
             // Enqueue the waiting thread back to the ready queue based on scheduling algorithm 
             if(SCHED == 0){
                 // RR Scheduling Algorithm
@@ -191,7 +178,7 @@ void mypthread_exit(void *value_ptr) {
             }
             // Do the same for the rest of the waiting threads
 
-       }
+        }
 
 
 
@@ -199,9 +186,7 @@ void mypthread_exit(void *value_ptr) {
 
     // Deallocate any dynamic memory allocated when starting this thread
 
-
-	
-	return;
+    return;
 };
 
 
@@ -490,7 +475,7 @@ static void schedule() {
             swapcontext(scheduler_context,currentThreadControlBlock->threadContext);
         }
 
-        else{
+        else {
             // There is no thread in the ready queue
             // Switch to the default context
             
