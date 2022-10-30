@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -g -w -Wall -fsanitize=address
+CFLAGS = -g -w -Wall # -fsanitize=address
 
 SCHED = PSJF
 

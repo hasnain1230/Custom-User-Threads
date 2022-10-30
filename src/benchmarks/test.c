@@ -2,7 +2,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <stdbool.h>
-#include "../mypthread.h"
+#include <pthread.h>
 #include "../queue.h"
 
 #ifndef PSJF
@@ -18,7 +18,6 @@
  * You can modify and use this program as much as possible.
  * This will not be graded.
  */
-
 
 void function1() {
     while(1){
