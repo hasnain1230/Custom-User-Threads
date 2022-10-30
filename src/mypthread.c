@@ -111,9 +111,10 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t *attr, void *(*function
 /* current thread voluntarily surrenders its remaining runtime for other threads to use */
 int mypthread_yield() {
 	// change current thread's state from Running to Ready
+	threadContext->status = 0;
 	// save context of this thread to its thread control block
+	threadControlBlock->threadContext = threadContext;
 	// switch from this thread's context to the scheduler's context
-	
 	schedule();
 
 	return 0;
@@ -122,6 +123,9 @@ int mypthread_yield() {
 /* terminate a thread */
 void mypthread_exit(void *value_ptr) {
 	// preserve the return value pointer if not NULL
+	if (value_ptr != NULL){
+		threadContext->value = value_ptr;
+	}
 	// deallocate any dynamic memory allocated when starting this thread
 	
 	return;
