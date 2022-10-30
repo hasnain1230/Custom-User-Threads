@@ -43,7 +43,6 @@ struct Queue *readyQueue = NULL, *blockedQueue = NULL;
 static tcb **threads;
 
 
-
 // // Required to periodically switch to the scheduler context
 // // Need to save the scheduler context globally to run it
 // ucontext_t schedulerContext;
@@ -277,10 +276,7 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex) {
 /* destroy the mutex */
 int mypthread_mutex_destroy(mypthread_mutex_t *mutex) {
     free(mutex);
-
-    
-
-	return 0;
+    return 0;
 };
 
 

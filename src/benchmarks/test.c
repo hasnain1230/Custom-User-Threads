@@ -93,10 +93,6 @@ int main (void) {
             printf("%d\n",thread2);
             printf("%d\n",thread3);
         }
-<<<<<<< HEAD
         i++;
     }
-=======
-    }*/
->>>>>>> 31694f7 (Added some mutex code)
 }
