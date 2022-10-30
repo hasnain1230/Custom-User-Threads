@@ -26,6 +26,7 @@
 static struct sigaction sa;
 static struct itimerval timer;
 static void schedule();
+void scheduler_interrupt_handler();
 
 //static ucontext_t* scheduler_context;
 static int continue_scheduling = 1;
@@ -146,6 +147,8 @@ int mypthread_mutex_init(mypthread_mutex_t *mutex, const pthread_mutexattr_t *mu
 	// YOUR CODE HERE
 	
 	mutex = malloc(sizeof(mypthread_mutex_t));
+    checkMalloc(mutex); // Will exit with return status -1 if failed.
+
     atomic_flag_clear(&mutex->lock);
 
 	return 0;
@@ -153,31 +156,37 @@ int mypthread_mutex_init(mypthread_mutex_t *mutex, const pthread_mutexattr_t *mu
 
 /* aquire a mutex lock */
 int mypthread_mutex_lock(mypthread_mutex_t *mutex) {
-		// YOUR CODE HERE
+        if (atomic_flag_test_and_set(&mutex->lock)) {
+            // Lock is already set, so we need to block the thread
+            currentThreadControlBlock->status = 2;
+            currentThreadControlBlock->threadPriority = 0; // We set the priority to 0 so that it is the first to be scheduled when it is unblocked.
+            normalEnqueue(blockedQueue, currentThreadControlBlock); // Do we need to worry about the scheduling policy here?
+            return -1;
+        } else {
+            return 0;
+        }
 	
 		// use the built-in test-and-set atomic function to test the mutex
 		// if the mutex is acquired successfully, return
 		// if acquiring mutex fails, put the current thread on the blocked/waiting list and context switch to the scheduler thread
-		
-		return 0;
 };
 
 /* release the mutex lock */
 int mypthread_mutex_unlock(mypthread_mutex_t *mutex) {
 	// YOUR CODE HERE	
-	
-	// update the mutex's metadata to indicate it is unlocked
-	// put the thread at the front of this mutex's blocked/waiting queue in to the run queue
+    atomic_flag_clear(&mutex->lock);
+    currentThreadControlBlock->status = 0;
+    currentThreadControlBlock->threadPriority = 0;
 
-	return 0;
+    priorityEnqueue(readyQueue, currentThreadControlBlock);
+
+	return 0; // What is the return value here.
 };
 
 
 /* destroy the mutex */
 int mypthread_mutex_destroy(mypthread_mutex_t *mutex) {
-	// YOUR CODE HERE
-	
-	// deallocate dynamic memory allocated during mypthread_mutex_init
+    free(mutex);
 
 	return 0;
 };
@@ -208,7 +217,7 @@ void stop_timer() {
 }
 
 /* Handle the timer interrupt and run scheduler*/
-void scheduler_interrupt_handler(){
+void scheduler_interrupt_handler() {
 
     // Before entering library code the scheduler interrupt timer must be stopped
     stop_timer();
@@ -347,10 +356,10 @@ static void schedule() {
     //      Restart timer so that the scheduler can run again in the future
     //{
     
-    while(continue_scheduling == 1){
+    while(continue_scheduling == 1) {
 
         printf("Running scheduler\n");
-        if(readyQueue->currentSize > 0  && SCHED == 0) {
+        if(!isEmpty(readyQueue) && SCHED == 0) {
             // Call the Round Robin scheduling algorithm
             // If successfull, sets the currentThreadControlBlock variable to that of the next thread to run
             printf("Running RR algo\n");
@@ -360,7 +369,7 @@ static void schedule() {
             
         }
 
-        else if(readyQueue->currentSize > 0 && SCHED == 1){
+        else if(!isEmpty(readyQueue) && SCHED == 1){
             // Call the PSJF scheduling algorithm
             // If successfull, sets the currentThreadControlblock variable to that of the next thread to run.
             printf("Running PSJF algo\n");
@@ -369,10 +378,7 @@ static void schedule() {
             swapcontext(scheduler_context,currentThreadControlBlock->threadContext);
         }
 
-        else{
-            // There is no thread in the ready queue
-            // Switch to the default context
-            
+        else {
             swapcontext(scheduler_context,default_context);
         }
 
