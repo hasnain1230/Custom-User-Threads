@@ -22,7 +22,7 @@
 
 void function1() {
     while(1){
-        printf("Function 1 running\n");
+        //printf("Function 1 running\n");
         sleep(10);
     }
 }
@@ -30,7 +30,7 @@ void function1() {
 void function2()
 {
     while(1) {
-        printf("Function 2 running\n");
+        //printf("Function 2 running\n");
         sleep(10);
     }
 
@@ -41,7 +41,7 @@ void function2()
 void function3()
 {
     while(1){
-        printf("Function 3 running\n");
+        //printf("Function 3 running\n");
         sleep(10);
         
     }
@@ -51,7 +51,7 @@ void function3()
 void function4(){
 
     while(1){
-        printf("Function 4 is working");
+        //printf("Function 4 is working");
         sleep(10);
     }
 
@@ -64,10 +64,11 @@ int main (void) {
     pthread_create(&thread3,NULL,(void*) function3,NULL);
     int  i = 0;
     while(1){
-        i++;
-        if(i == 100) {
-            pthread_create(&thread4,NULL,(void*)function4,NULL);
-            sleep(10000);
+        if(i == 0){
+            printf("%d\n",thread1);
+            printf("%d\n",thread2);
+            printf("%d\n",thread3);
         }
+        i++;
     }
 }

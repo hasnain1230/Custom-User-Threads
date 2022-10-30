@@ -30,7 +30,7 @@ static int schedulerInitalized = 0;
 
 //static ucontext_t* scheduler_context;
 static int continue_scheduling = 1;
-static tcb* currentThreadControlBlock = NULL;
+static tcb currentThreadControlBlock = NULL;
 //static ucontext_t* default_context;
 
 static ucontext_t *scheduler_context, *default_context;
@@ -38,6 +38,11 @@ static ucontext_t *scheduler_context, *default_context;
 static int threadCount = 0;
 struct Queue *readyQueue = NULL;
 static struct Queue *blockedQueue = NULL;
+
+// Store a thread's tcb* in the threads array, where the index is the threadId
+// When calls to pthread_exit or pthread_join are made then look up the thread using this array
+static tcb **threads;
+
 
 
 // // Required to periodically switch to the scheduler context
@@ -57,6 +62,8 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t *attr, void *(*function
 
         readyQueue = initQueue();
         blockedQueue = initQueue();
+
+        threads = (tcb**) malloc(150*sizeof(tcb*));
     }
 
     static pid_t threadId = 0;
@@ -88,6 +95,11 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t *attr, void *(*function
     threadControlBlock->threadContext = ucontext_thread;
     threadControlBlock->threadID = threadId++;
     threadControlBlock->status = 0; // 0 = ready, 1 = running, 2 = blocked, 3 = terminated
+
+    // Need to set the given mypthread_t *thread to the threadId of the thread we just created
+    *thread = (uint) threadId;
+    // Save the newly created thread's tcb in the threads[], the index is the threadId
+    threads[threadId] = threadControlBlock;
     threadCount++;
 
     if (SCHED) {
@@ -110,11 +122,22 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t *attr, void *(*function
 
 /* current thread voluntarily surrenders its remaining runtime for other threads to use */
 int mypthread_yield() {
+    // Before entering library code the interrupt timer must be stopped
+
+        stop_timer();
 	// change current thread's state from Running to Ready
 	// save context of this thread to its thread control block
 	// switch from this thread's context to the scheduler's context
 	
-	schedule();
+        // Change status of currently running thread from RUNNING (1) to READY (0)
+        currentThreadControlBlock->status = 0;
+        
+        // Call scheduler_interrupt handler
+        // This will save the currently running thread's context, put the currently running thread at the back of the ready queue
+        // and will swap to the sceduler context
+        scheduler_interrupt_handler(0);
+
+	
 
 	return 0;
 };
@@ -123,6 +146,60 @@ int mypthread_yield() {
 void mypthread_exit(void *value_ptr) {
 	// preserve the return value pointer if not NULL
 	// deallocate any dynamic memory allocated when starting this thread
+
+    stop_timer();
+
+    // Check if value_ptr is NULL
+    // If is not null then save the return value to the TCB
+    if(value_ptr != NULL){
+        currentThreadControlBlock->returnValue = value_ptr;
+    }
+
+    // Change the status of the currently running thread to TERMINATED (3)
+    currentThreadControlBlock->status = 3;
+
+
+    // Check if there are any other threads waiting for this one to join
+    // If there are them they need to be added back to the ready queue and allowed to run
+    if(currentThreadControlBlock->numberOfThreadsWaitingToJoin > 0){
+        // There are threads that are waiting for this thread to join
+        // Change the status of each of those threads from waiting (2) to READY (0)
+        // Add them to the ready queue
+
+        int i = currentThreadControlBlock->numberOfThreadsWaitingToJoin;
+        tcb* waitingThread;
+        
+       while(i > 1){
+            // Get the threadID of the waitingThread
+            --i;
+            mypthread_t threadID = currentThreadControlBlock->threadsWaitingToJoin[i];
+            // Get the tcb* to the waitingThread
+            waitingThread = threads[threadID];
+            // Set the waitingThread's status to READY
+            waitingThread->status = 0;
+           
+            // Enqueue the waiting thread back to the ready queue based on scheduling algorithm 
+            if(SCHED == 0){
+                // RR Scheduling Algorithm
+                normalEnqueue(readyQueue,waitingThread);
+            }
+
+            else{
+                // PSJF Scheduling Algorithm
+                priorityEnqueue(readyQueue,waitingThread);
+
+            }
+            // Do the same for the rest of the waiting threads
+
+       }
+
+
+
+    }
+
+    // Deallocate any dynamic memory allocated when starting this thread
+
+
 	
 	return;
 };
@@ -130,11 +207,43 @@ void mypthread_exit(void *value_ptr) {
 
 /* Wait for thread termination */
 int mypthread_join(mypthread_t thread, void **value_ptr) {
-	// YOUR CODE HERE
 
 	// wait for a specific thread to terminate
-	// deallocate any dynamic memory created by the joining thread
 
+    // Stop the interrupt timer when running library code
+    stop_timer();
+
+    // Get the TCB of the thread that we want to join with 
+    tcb* joiningThreadTCB = threads[thread];
+
+    // Check if the joiningThread has already terminated, if it has then continue
+    if(joiningThreadTCB->status==3){
+        if(value_ptr != NULL){
+            *value_ptr = joiningThreadTCB->returnValue;
+        }
+    }
+
+    else{
+        // joiningThread has not yet terminated
+        // Add the currently running thread to the threadsWaitingToJoin array of the TCB
+        // Increment the numberOfThreadsWaitingToJoin to reflect that the currently running thread will now wait
+        // Save the context of the currently running thread and swap to the scheduler context
+        joiningThreadTCB->threadsWaitingToJoin[joiningThreadTCB->numberOfThreadsWaitingToJoin] = currentThreadControlBlock->threadID;
+        joiningThreadTCB->numberOfThreadsWaitingToJoin++;
+        scheduler_interrupt_handler(1);
+
+        if(value_ptr!=NULL){
+            *value_ptr = joiningThreadTCB->returnValue;
+        }
+    }
+
+
+
+
+	// deallocate any dynamic memory created by the joining thread
+    // What should be deallocated from the joining thread, that has not already been deallocated by pthread_exit()
+
+    // What should the return values be for this function?
 	return 0;
 };
 
@@ -177,6 +286,8 @@ int mypthread_mutex_destroy(mypthread_mutex_t *mutex) {
 	
 	// deallocate dynamic memory allocated during mypthread_mutex_init
 
+    
+
 	return 0;
 };
 
@@ -206,17 +317,11 @@ void stop_timer() {
 }
 
 /* Handle the timer interrupt and run scheduler*/
-void scheduler_interrupt_handler(){
+void scheduler_interrupt_handler(int callFromFunction){
 
     // Before entering library code the scheduler interrupt timer must be stopped
     stop_timer();
 
-    // Need to do the following:
-    // Get current tcb pointer
-    // Increase the priority of the threadControlBlock;
-    // Send the current threadControlBlock to the back of the queue
-    // Call swapcontext(threadControlBlock->threadContext,scheduler_context)
-    //      -> this function saves the currently running context into threadControlBlock->threadContext, and switches to the scheduler's context
 
     printf("Interrupt Recived\n");
     if(currentThreadControlBlock == NULL) {
@@ -224,11 +329,11 @@ void scheduler_interrupt_handler(){
        //getcontext(default_context);
         //setcontext(scheduler_context);
         setcontext(scheduler_context);
-        printf("Switching to scheduler context\n");
+        //printf("Switching to scheduler context\n");
        
     }
 
-    else{
+    else if(callFromFunction == 0){
         // There is currently a thread executing
         // Increase the threads priority, and enqueue to the back of the queue
         //      if the scheduling algorithm is PSJF, then use priority enqueue, otherwise use normal enqueue
@@ -243,6 +348,24 @@ void scheduler_interrupt_handler(){
 
         // Now swap context from the currently running thread to the scheduler context
         swapcontext(currentThreadControlBlock->threadContext,scheduler_context);
+    }
+
+    else if(callFromFunction == 1){
+        // There is currently a thread executing but it has made a call to mypthread_join()
+        // The thread it wants to join with has not finished terminating, therefore we must stop executing the current thread until the joing thread has finished
+        // Swap context from the currently running thread to the scheduler context so another thread can run
+        // The currently running thread will not be added to the ready queue, when the joining thread calls mypthread_exit() it will be handled by that function
+        swapcontext(currentThreadControlBlock->threadContext,scheduler_context);
+
+    }
+
+    else if(callFromFunction == 2){
+        // Pthread_exit() has just been called, the currently running pthread is the one that called it
+        // Since thread has finished runnning, no need to save it's context, just swap to scheduler's context
+        setcontext(scheduler_context);
+
+
+
     }
 
 }
@@ -282,7 +405,7 @@ void create_schedule_context() {
 
     makecontext(scheduler_context,schedule,0,NULL);
 
-    printf("Scheduler context has been setup\n");
+    //printf("Scheduler context has been setup\n");
 
 
 }
