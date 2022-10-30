@@ -25,5 +25,6 @@ void normalEnqueue(struct Queue *queue, tcb *threadControlBlock);
 tcb *normalDequeue(struct Queue *queue);
 void priorityEnqueue(struct Queue *queue, tcb *threadControlBlock);
 void freeQueue(struct Queue *queue);
+void checkMalloc(void *ptr);
 
 #endif //CUSTOM_USER_THREADS_QUEUE_H
