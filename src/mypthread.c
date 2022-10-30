@@ -26,7 +26,6 @@
 static struct sigaction sa;
 static struct itimerval timer;
 static void schedule();
-static int schedulerInitalized = 0;
 
 //static ucontext_t* scheduler_context;
 static int continue_scheduling = 1;
@@ -36,8 +35,7 @@ static tcb *currentThreadControlBlock = NULL;
 static ucontext_t *scheduler_context, *default_context;
 
 static int threadCount = 0;
-struct Queue *readyQueue = NULL;
-static struct Queue *blockedQueue = NULL;
+struct Queue *readyQueue = NULL, *blockedQueue = NULL;
 
 // Store a thread's tcb* in the threads array, where the index is the threadId
 // When calls to pthread_exit or pthread_join are made then look up the thread using this array
