@@ -23,29 +23,40 @@
 #define STACKSIZE (2 * 1024 * 1024) // According to man pthread_attr_init, the default stack size is 2MB. Keeping with this, we'll initialize the stack size to 2MiB as well, converted to bytes.
 #define QUANTUM 25000 // Quantum is set to 25ms = 25000 us
 
+#define MAX_THREADS 150 // Maximum number of threads that can be created
+
+static void schedule();
+void scheduler_interrupt_handler(int callFromFunction);
+void stop_timer();
+
 static struct sigaction sa;
 static struct itimerval timer;
-static void schedule();
-void scheduler_interrupt_handler();
-
-//static ucontext_t* scheduler_context;
-static int continue_scheduling = 1;
+static int continue_scheduling = 1, threadCount = 0, schedulerInitalized = 0;
 static tcb *currentThreadControlBlock = NULL;
-//static ucontext_t* default_context;
-
 static ucontext_t *scheduler_context, *default_context;
-
-static int threadCount = 0;
 struct Queue *readyQueue = NULL, *blockedQueue = NULL;
 
 // Store a thread's tcb* in the threads array, where the index is the threadId
 // When calls to pthread_exit or pthread_join are made then look up the thread using this array
 static tcb **threads;
 
-
-// // Required to periodically switch to the scheduler context
-// // Need to save the scheduler context globally to run it
-// ucontext_t schedulerContext;
+void cleanUp() {
+    // Free all the memory allocated for the threads
+    for (int i = 0; i < MAX_THREADS; i++) {
+        if (threads[i] != NULL) {
+            free(threads[i]->threadContext->uc_stack.ss_sp);
+            free(threads[i]->threadContext);
+            free(threads[i]);
+        }
+    }
+    free(threads);
+    freeQueue(readyQueue);
+    freeQueue(blockedQueue);
+    free(scheduler_context->uc_stack.ss_sp);
+    free(scheduler_context);
+    free(default_context->uc_stack.ss_sp);
+    free(default_context);
+}
 
 int mypthread_create(mypthread_t *thread, pthread_attr_t *attr, void *(*function) (void*), void *arg) {
 
@@ -53,6 +64,8 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t *attr, void *(*function
 
     if (threadCount == 0 && readyQueue == NULL && blockedQueue == NULL) {
         default_context = (ucontext_t *) malloc(sizeof(ucontext_t));
+        checkMalloc(default_context);
+
         if (getcontext(default_context) == -1) {
             perror("getcontext");
             return -1;
@@ -61,12 +74,16 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t *attr, void *(*function
         readyQueue = initQueue();
         blockedQueue = initQueue();
 
-        threads = (tcb**) malloc(150*sizeof(tcb*));
+        threads = (tcb**) malloc(MAX_THREADS * sizeof(tcb*));
+
+        atexit(cleanUp);
     }
 
     static pid_t threadId = 0;
     ucontext_t *currentContext = malloc(sizeof(ucontext_t));
+    checkMalloc(currentContext);
     ucontext_t *ucontext_thread = malloc(sizeof(ucontext_t));
+    checkMalloc(ucontext_thread);
 
     if (getcontext(currentContext) == -1 || getcontext(ucontext_thread) == -1) { // If something when creating thread goes wrong, we clean up and return -1
         perror("getcontext failed.");
@@ -79,13 +96,9 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t *attr, void *(*function
 
     ucontext_thread->uc_stack.ss_size = STACKSIZE;
     ucontext_thread->uc_stack.ss_sp = malloc(ucontext_thread->uc_stack.ss_size);
-    ucontext_thread->uc_stack.ss_flags = 0;
-    ucontext_thread->uc_link = currentContext; // Might be wrong??
-    makecontext(ucontext_thread, (void *) function, 1, arg); // Might need a wrapper function?
-
-
-
-
+    ucontext_thread->uc_stack.ss_flags = 0; //
+    ucontext_thread->uc_link = currentContext; // When the thread finishes, it will return to the current context
+    makecontext(ucontext_thread, (void *) function, 1, arg);
 
 
     tcb *threadControlBlock = malloc(sizeof(tcb));
@@ -96,6 +109,7 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t *attr, void *(*function
 
     // Need to set the given mypthread_t *thread to the threadId of the thread we just created
     *thread = (uint) threadId;
+
     // Save the newly created thread's tcb in the threads[], the index is the threadId
     threads[threadId] = threadControlBlock;
     threadCount++;
@@ -107,7 +121,6 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t *attr, void *(*function
         threadControlBlock->threadPriority = -1; // We are not concerned about priority in this case.
         normalEnqueue(readyQueue, threadControlBlock);
     }
-
 
     if (schedulerInitalized == 0) {
         create_schedule_context();
@@ -232,8 +245,7 @@ int mypthread_join(mypthread_t thread, void **value_ptr) {
 
 /* initialize the mutex lock */
 int mypthread_mutex_init(mypthread_mutex_t *mutex, const pthread_mutexattr_t *mutexattr) {
-    assert(mutexattr == NULL);
-	// YOUR CODE HERE
+    assert(mutexattr == NULL); // We don't support mutex attributes
 	
 	mutex = malloc(sizeof(mypthread_mutex_t));
     checkMalloc(mutex); // Will exit with return status -1 if failed.
@@ -249,7 +261,13 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex) {
             // Lock is already set, so we need to block the thread
             currentThreadControlBlock->status = 2;
             currentThreadControlBlock->threadPriority = 0; // We set the priority to 0 so that it is the first to be scheduled when it is unblocked.
-            normalEnqueue(blockedQueue, currentThreadControlBlock); // Do we need to worry about the scheduling policy here?
+
+            if (SCHED) {
+                priorityEnqueue(blockedQueue, currentThreadControlBlock); // FIXME: Will probably cause a memory issue.
+            } else {
+                normalEnqueue(blockedQueue, currentThreadControlBlock);
+            }
+
             return -1;
         } else {
             return 0;
@@ -311,7 +329,7 @@ void scheduler_interrupt_handler(int callFromFunction){
 
 
     printf("Interrupt Recived\n");
-    if(currentThreadControlBlock == NULL) {
+    if (currentThreadControlBlock == NULL) {
         // No thread was executing, just swap to the schedule() context
        //getcontext(default_context);
         //setcontext(scheduler_context);
@@ -320,7 +338,7 @@ void scheduler_interrupt_handler(int callFromFunction){
        
     }
 
-    else if(callFromFunction == 0){
+    else if (callFromFunction == 0){
         // There is currently a thread executing
         // Increase the threads priority, and enqueue to the back of the queue
         //      if the scheduling algorithm is PSJF, then use priority enqueue, otherwise use normal enqueue
@@ -350,9 +368,6 @@ void scheduler_interrupt_handler(int callFromFunction){
         // Pthread_exit() has just been called, the currently running pthread is the one that called it
         // Since thread has finished runnning, no need to save it's context, just swap to scheduler's context
         setcontext(scheduler_context);
-
-
-
     }
 
 }
@@ -393,8 +408,6 @@ void create_schedule_context() {
     makecontext(scheduler_context,schedule,0,NULL);
 
     //printf("Scheduler context has been setup\n");
-
-
 }
 
 
@@ -414,8 +427,6 @@ static void sched_RR()
 
     currentThreadControlBlock = normalDequeue(readyQueue);
 
-
-
     // Finished running library code, context switch to the thread to be run and restart scheduler interrupt timer
     //restart_timer();
 	
@@ -429,8 +440,6 @@ static void sched_PSJF()
     
 	// Your own implementation of PSJF (STCF)
 	// (feel free to modify arguments and return types)
-
-
     currentThreadControlBlock = normalDequeue(readyQueue);
 
     
@@ -445,9 +454,6 @@ static void schedule() {
     // Do we need to call stop_timer() because the scheduler_interrupt_handler() already stops the timer
     //stop_timer();
 
-
-
-
     // How long should the scheduler run, should it loop until there are no more threads in the queue? Maybe like this:
     // while(queue->currentSize > 0) {
     //      Call the correct scheduling algorithm, the algorithm will update the global thread tcb pointer
@@ -455,7 +461,7 @@ static void schedule() {
     //      Restart timer so that the scheduler can run again in the future
     //{
     
-    while(continue_scheduling == 1) {
+    while (continue_scheduling == 1) {
 
         printf("Running scheduler\n");
         if(!isEmpty(readyQueue) && SCHED == 0) {

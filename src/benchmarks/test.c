@@ -58,29 +58,20 @@ void function4(){
 
 int main (void) {
 
-    atomic_bool lock;
-    atomic_flag_clear(&lock);
-
-    if (atomic_flag_test_and_set(&lock)) {
-        printf("Lock is set\n");
-    } else {
-        printf("Lock is not set\n");
+    pthread_t thread1,thread2,thread3,thread4;
+    pthread_create(&thread1,NULL,(void*) function1,NULL);
+    pthread_create(&thread2,NULL,(void*) function2,NULL);
+    pthread_create(&thread3,NULL,(void*) function3,NULL);
+    int  i = 0;
+    while(1){
+        if(i == 0){
+            printf("%d\n",thread1);
+            printf("%d\n",thread2);
+            printf("%d\n",thread3);
+        }
+        i++;
     }
-
-    atomic_flag_test_and_set(&lock);
-
-    if (lock) {
-        printf("Lock is set\n");
-    } else {
-        printf("Lock is not set\n");
-    }
-
-    if (lock) {
-        printf("Lock is set\n");
-    } else {
-        printf("Lock is not set\n");
-    }
-
+}
 
 /*    pthread_t thread1,thread2,thread3,thread4;
     pthread_create(&thread1,NULL,(void*) function1,NULL);
@@ -96,3 +87,4 @@ int main (void) {
         i++;
     }
 }
+*/
