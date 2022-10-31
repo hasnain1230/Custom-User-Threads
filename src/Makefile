@@ -8,13 +8,13 @@ SCHED = RR
 all: mypthread.a
 
 mypthread.a: mypthread.o # Generate an archive to link and Generate an index table
-	$(AR) libmypthread.a queue.o mypthread.o
+	$(AR) libmypthread.a queue.o checkMalloc.o mypthread.o
 	$(RANLIB) libmypthread.a
 
 mypthread.o: mypthread.h
 
 ifeq ($(SCHED), RR)
-	$(CC) -pthread -c $(CFLAGS) queue.c mypthread.c
+	$(CC) -pthread -c $(CFLAGS) queue.c mypthread.c checkMalloc.c
 else ifeq ($(SCHED), PSJF)
 	$(CC) -pthread -c $(CFLAGS) -DPSJF queue.c mypthread.c
 else ifeq ($(SCHED), MLFQ) # For the grad student class

@@ -1,11 +1,3 @@
-// File:	mypthread_t.h
-
-// List all group members' names:
-// iLab machine tested on:
-
-#ifndef MYTHREAD_T_H
-#define MYTHREAD_T_H
-
 #define _GNU_SOURCE
 
 /* in order to use the built-in Linux pthread library as a control for benchmarking, you have to comment the USE_MYTHREAD macro */
@@ -24,15 +16,12 @@
 
 typedef uint mypthread_t;
 
-	/* add important states in a thread control block */
+/* add important states in a thread control block */
 typedef struct threadControlBlock {
     ushort status; // 0 = ready, 1 = running, 2 = blocked, 3 = terminated
-	mypthread_t threadID;
+    mypthread_t threadID;
     uint threadPriority;
-    ucontext_t *currentContext;
-	ucontext_t *threadContext;
-    mypthread_t threadsWaitingToJoin[150];
-    uint numberOfThreadsWaitingToJoin;
+    ucontext_t *currentContext, *threadContext;
     void* returnValue;
 } tcb;
 
@@ -41,9 +30,7 @@ typedef struct mypthread_mutex_t {
     atomic_bool lock;
 } mypthread_mutex_t;
 
-// Feel free to add your own auxiliary data structures (linked list or queue etc...)
-
-
+// Queue data structure assigned in queue.h and queue.c. Makefile has been updated accordingly.
 
 /* Function Declarations: */
 
@@ -85,6 +72,4 @@ int mypthread_mutex_destroy(mypthread_mutex_t *mutex);
 #define pthread_mutex_lock mypthread_mutex_lock
 #define pthread_mutex_unlock mypthread_mutex_unlock
 #define pthread_mutex_destroy mypthread_mutex_destroy
-#endif
-
 #endif

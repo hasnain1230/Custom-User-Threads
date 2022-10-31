@@ -1,12 +1,8 @@
-//
-// Created by lucidity on 10/29/22.
-//
+#ifndef QUEUE_H
+#define QUEUE_H
 
 #include <stdbool.h>
 #include "mypthread.h"
-
-#ifndef CUSTOM_USER_THREADS_QUEUE_H
-#define CUSTOM_USER_THREADS_QUEUE_H
 
 struct Node {
     void *data;
@@ -25,6 +21,4 @@ void normalEnqueue(struct Queue *queue, tcb *threadControlBlock);
 tcb *normalDequeue(struct Queue *queue);
 void priorityEnqueue(struct Queue *queue, tcb *threadControlBlock);
 void freeQueue(struct Queue *queue);
-void checkMalloc(void *ptr);
-
-#endif //CUSTOM_USER_THREADS_QUEUE_H
+#endif
