@@ -31,7 +31,7 @@ typedef struct threadControlBlock {
     uint threadPriority;
     ucontext_t *currentContext;
 	ucontext_t *threadContext;
-    mypthread_t threadsWaitingToJoin[150];
+    mypthread_t **threadsWaitingToJoin;
     uint numberOfThreadsWaitingToJoin;
     void* returnValue;
 } tcb;

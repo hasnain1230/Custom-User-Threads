@@ -26,12 +26,13 @@
 #define MAX_THREADS 150 // Maximum number of threads that can be created
 
 static void schedule();
-void scheduler_interrupt_handler(int callFromFunction);
+void scheduler_interrupt_handler();
 void stop_timer();
+void restart_timer();
 
 static struct sigaction sa;
 static struct itimerval timer;
-static int continue_scheduling = 1, threadCount = 0, schedulerInitalized = 0;
+static int continue_scheduling = 1, threadCount = 0, schedulerInitalized = 0,timerInitalized = 0;
 static int interruptCaller = 0; // 0 -> periodic timer interrupt or mypthread yield(), 1 -> mypthread join(), 2 -> mypthread exit()
 static tcb *currentThreadControlBlock = NULL;
 static ucontext_t *scheduler_context, *default_context;
@@ -45,6 +46,7 @@ void cleanUp() {
     // Free all the memory allocated for the threads
     for (int i = 0; i < MAX_THREADS; i++) {
         if (threads[i] != NULL) {
+
             free(threads[i]->threadContext->uc_stack.ss_sp);
             free(threads[i]->threadContext);
             free(threads[i]);
@@ -61,7 +63,9 @@ void cleanUp() {
 
 int mypthread_create(mypthread_t *thread, pthread_attr_t *attr, void *(*function) (void*), void *arg) {
 
-
+    if(timerInitalized == 1){
+        stop_timer();
+    }
 
     if (threadCount == 0 && readyQueue == NULL && blockedQueue == NULL) {
         default_context = (ucontext_t *) malloc(sizeof(ucontext_t));
@@ -102,18 +106,23 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t *attr, void *(*function
     makecontext(ucontext_thread, (void *) function, 1, arg);
 
 
+
     tcb *threadControlBlock = malloc(sizeof(tcb));
     threadControlBlock->currentContext = currentContext;
     threadControlBlock->threadContext = ucontext_thread;
-    threadControlBlock->threadID = threadId++;
+    threadControlBlock->threadID = threadCount;
     threadControlBlock->status = 0; // 0 = ready, 1 = running, 2 = blocked, 3 = terminated
     threadControlBlock->numberOfThreadsWaitingToJoin = 0;
+    threadControlBlock->threadsWaitingToJoin = (mypthread_t**) malloc(MAX_THREADS * sizeof(mypthread_t*));
     // Need to set the given mypthread_t *thread to the threadId of the thread we just created
-    *thread = (uint) threadId;
-
     // Save the newly created thread's tcb in the threads[], the index is the threadId
-    threads[threadId] = threadControlBlock;
+    threads[threadControlBlock->threadID] = (tcb*) malloc(sizeof(tcb));
+    threads[threadControlBlock->threadID] = threadControlBlock;
+
+    *thread = threadControlBlock->threadID;
     threadCount++;
+
+    
 
     if (SCHED) {
         threadControlBlock->threadPriority = -1; // We are not concerned about priority in this case.
@@ -127,6 +136,11 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t *attr, void *(*function
         create_schedule_context();
         setup_timer();
         schedulerInitalized = 1;
+        timerInitalized = 1;
+    }
+
+    if(timerInitalized == 1){
+        restart_timer();
     }
 
     return 0;
@@ -144,41 +158,41 @@ int mypthread_yield() {
 /* terminate a thread */
 void mypthread_exit(void *value_ptr) {
 
-    // deallocate any dynamic memory allocated when starting this thread
-
     stop_timer();
 
-    // Check if value_ptr is NULL
-    // If is not null then save the return value to the TCB
+    // if value_ptr is not NULL then save the value to be returned in the tcb
     if(value_ptr != NULL){
         currentThreadControlBlock->returnValue = value_ptr;
     }
 
+    
     // Change the status of the currently running thread to TERMINATED (3)
     currentThreadControlBlock->status = 3;
 
 
     // Check if there are any other threads waiting for this one to join
-    // If there are them they need to be added back to the ready queue and allowed to run
     if(currentThreadControlBlock->numberOfThreadsWaitingToJoin > 0){
         // There are threads that are waiting for this thread to join
-        // Change the status of each of those threads from waiting (2) to READY (0)
-        // Add them to the ready queue
-
-        int i = currentThreadControlBlock->numberOfThreadsWaitingToJoin;
+  
+        int numOfThreads = currentThreadControlBlock->numberOfThreadsWaitingToJoin;
         tcb* waitingThread;
 
-        while(i > 1){
-            // Get the threadID of the waitingThread
-            --i;
-            mypthread_t threadID = currentThreadControlBlock->threadsWaitingToJoin[i];
-            // Get the tcb* to the waitingThread
+        // Get each thread that was waiting for the current thread and add them to the ready queue
+        while(numOfThreads > 1){
+            
+            --numOfThreads;
+
+            // Get the threadID of a waiting thread
+            mypthread_t threadID = *currentThreadControlBlock->threadsWaitingToJoin[numOfThreads];
+
+            // Use the threadID to look up the waiting thread and get its tcb
             waitingThread = threads[threadID];
-            // Set the waitingThread's status to READY
+
+            // Set the waitingThread's status to READY (0)
             waitingThread->status = 0;
 
             // Enqueue the waiting thread back to the ready queue based on scheduling algorithm 
-            if(SCHED == 0){
+            if(SCHED){
                 // RR Scheduling Algorithm
                 normalEnqueue(readyQueue,waitingThread);
             }
@@ -188,7 +202,6 @@ void mypthread_exit(void *value_ptr) {
                 priorityEnqueue(readyQueue,waitingThread);
 
             }
-            // Do the same for the rest of the waiting threads
 
         }
 
@@ -197,8 +210,19 @@ void mypthread_exit(void *value_ptr) {
     }
 
 
-
     // Deallocate any dynamic memory allocated when starting this thread
+
+    // Deallocate the currentContext, threadContext and threadsWaitingToJoin because they will not longer be used
+    // Do not deallocate the actual tcb, the information contained in it may still be needed by mypthread_join()
+    // free(currentThreadControlBlock->currentContext->uc_stack.ss_sp);
+    // free(currentThreadControlBlock->currentContext);
+    // free(currentThreadControlBlock->threadContext->uc_stack.ss_sp);
+    // free(currentThreadControlBlock->threadContext);
+    //free(currentThreadControlBlock->threadsWaitingToJoin);
+
+    // Switch to scheduler context
+    interruptCaller = 2;
+    scheduler_interrupt_handler();
 
     return;
 };
@@ -207,33 +231,42 @@ void mypthread_exit(void *value_ptr) {
 /* Wait for thread termination */
 int mypthread_join(mypthread_t thread, void **value_ptr) {
 
-	// wait for a specific thread to terminate
-
     // Stop the interrupt timer when running library code
     stop_timer();
 
-    // Get the TCB of the thread that we want to join with 
-    tcb* joiningThreadTCB = threads[thread];
+    // Get the tcb of the thread that the calling thread is waiting for
+    tcb* exitThreadTCB = threads[thread];
 
-    // Check if the joiningThread has already terminated, if it has then continue
-    if(joiningThreadTCB->status==3){
+
+   printf("%d\n",threadCount);
+
+    // Check if the exitThread has already exited
+    if(exitThreadTCB->status==3){
+        // The exitThread has already exited
+
+        // If value_ptr is not NULL, import the return value
         if(value_ptr != NULL){
-            *value_ptr = joiningThreadTCB->returnValue;
+            *value_ptr = exitThreadTCB->returnValue;
         }
     }
 
     else{
-        // joiningThread has not yet terminated
-        // Add the currently running thread to the threadsWaitingToJoin array of the TCB
-        // Increment the numberOfThreadsWaitingToJoin to reflect that the currently running thread will now wait
-        // Save the context of the currently running thread and swap to the scheduler context
-        joiningThreadTCB->threadsWaitingToJoin[joiningThreadTCB->numberOfThreadsWaitingToJoin] = currentThreadControlBlock->threadID;
-        joiningThreadTCB->numberOfThreadsWaitingToJoin++;
+        // The exitThread has not yet exited
+
+        // Increment the numberOfThreadsWaitingToJoin, Add the calling thread to the exitThread's tcb
+        exitThreadTCB->numberOfThreadsWaitingToJoin++;
+        exitThreadTCB->threadsWaitingToJoin[exitThreadTCB->numberOfThreadsWaitingToJoin] = malloc(sizeof(mypthread_t));
+        *exitThreadTCB->threadsWaitingToJoin[exitThreadTCB->numberOfThreadsWaitingToJoin] = currentThreadControlBlock->threadID;
+
+
+        
         interruptCaller = 1;
         scheduler_interrupt_handler();
 
+
+         // If value_ptr is not NULL, import the return value
         if(value_ptr!=NULL){
-            *value_ptr = joiningThreadTCB->returnValue;
+            *value_ptr = exitThreadTCB->returnValue;
         }
     }
 
@@ -241,9 +274,7 @@ int mypthread_join(mypthread_t thread, void **value_ptr) {
 
 
 	// deallocate any dynamic memory created by the joining thread
-    // What should be deallocated from the joining thread, that has not already been deallocated by pthread_exit()
 
-    // What should the return values be for this function?
 	return 0;
 };
 
