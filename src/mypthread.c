@@ -115,11 +115,11 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t *attr, void *(*function
     threadCount++;
 
     if (SCHED) {
-        threadControlBlock->threadPriority = 0;
-        priorityEnqueue(readyQueue, threadControlBlock);
-    } else {
         threadControlBlock->threadPriority = -1; // We are not concerned about priority in this case.
         normalEnqueue(readyQueue, threadControlBlock);
+    } else {
+        threadControlBlock->threadPriority = 0;
+        priorityEnqueue(readyQueue, threadControlBlock);
     }
 
     if (schedulerInitalized == 0) {
@@ -263,10 +263,12 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex) {
             currentThreadControlBlock->threadPriority = 0; // We set the priority to 0 so that it is the first to be scheduled when it is unblocked.
 
             if (SCHED) {
-                priorityEnqueue(blockedQueue, currentThreadControlBlock); // FIXME: Will probably cause a memory issue.
-            } else {
                 normalEnqueue(blockedQueue, currentThreadControlBlock);
+            } else {
+                priorityEnqueue(blockedQueue, currentThreadControlBlock); // FIXME: Will probably cause a memory issue.
             }
+
+            scheduler_interrupt_handler(2);
 
             return -1;
         } else {
@@ -282,12 +284,19 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex) {
 int mypthread_mutex_unlock(mypthread_mutex_t *mutex) {
 	// YOUR CODE HERE	
     atomic_flag_clear(&mutex->lock);
-    currentThreadControlBlock->status = 0;
-    currentThreadControlBlock->threadPriority = 0;
+    tcb *threadToEnqueue = (tcb *) normalDequeue(blockedQueue); // As per directions
 
-    priorityEnqueue(readyQueue, currentThreadControlBlock);
+    if (!SCHED) {
+        threadToEnqueue->threadPriority++; // Decrease the priority of the thread that just released the lock
+    }
 
-	return 0; // What is the return value here.
+    if (SCHED) {
+        normalEnqueue(readyQueue, threadToEnqueue);
+    } else {
+        priorityEnqueue(readyQueue, threadToEnqueue);
+    }
+
+	return 0; // What is the return value here?
 };
 
 
@@ -296,9 +305,6 @@ int mypthread_mutex_destroy(mypthread_mutex_t *mutex) {
     free(mutex);
     return 0;
 };
-
-
-
 
 /* Scheduler helper method */
 
@@ -364,7 +370,7 @@ void scheduler_interrupt_handler(int callFromFunction){
 
     }
 
-    else if(callFromFunction == 2){
+    else if (callFromFunction == 2){
         // Pthread_exit() has just been called, the currently running pthread is the one that called it
         // Since thread has finished runnning, no need to save it's context, just swap to scheduler's context
         setcontext(scheduler_context);
@@ -391,7 +397,7 @@ void setup_timer() {
 }
 
 
-/* The scheduler's context must be created before it can be sweitched into periodically*/
+/* The scheduler's context must be created before it can be switched into periodically*/
 void create_schedule_context() {
     scheduler_context = (ucontext_t*) malloc(sizeof(ucontext_t));
 
@@ -476,7 +482,7 @@ static void schedule() {
 
         else if(!isEmpty(readyQueue) && SCHED == 1){
             // Call the PSJF scheduling algorithm
-            // If successfull, sets the currentThreadControlblock variable to that of the next thread to run.
+            // If successful, sets the currentThreadControlBlock variable to that of the next thread to run.
             printf("Running PSJF algo\n");
             sched_PSJF();
             restart_timer();
