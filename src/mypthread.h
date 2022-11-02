@@ -1,3 +1,6 @@
+#ifndef MYPTHREAD_H
+#define MYPTHREAD_H
+
 #define _GNU_SOURCE
 
 /* in order to use the built-in Linux pthread library as a control for benchmarking, you have to comment the USE_MYTHREAD macro */
@@ -28,6 +31,8 @@ typedef struct threadControlBlock {
 /* mutex struct definition */
 typedef struct mypthread_mutex_t {
     atomic_bool lock;
+    mypthread_t owner;
+    void *waitingQueue; // To avoid circular dependencies, we make this void * and cast it to a Queue * when we use it.
 } mypthread_mutex_t;
 
 // Queue data structure assigned in queue.h and queue.c. Makefile has been updated accordingly.
@@ -72,4 +77,6 @@ int mypthread_mutex_destroy(mypthread_mutex_t *mutex);
 #define pthread_mutex_lock mypthread_mutex_lock
 #define pthread_mutex_unlock mypthread_mutex_unlock
 #define pthread_mutex_destroy mypthread_mutex_destroy
+#endif
+
 #endif

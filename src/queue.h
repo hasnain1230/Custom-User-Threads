@@ -1,8 +1,9 @@
 #ifndef QUEUE_H
 #define QUEUE_H
-
 #include <stdbool.h>
+#include <stdio.h>
 #include "mypthread.h"
+
 
 struct Node {
     void *data;
@@ -21,4 +22,5 @@ void normalEnqueue(struct Queue *queue, tcb *threadControlBlock);
 tcb *normalDequeue(struct Queue *queue);
 void priorityEnqueue(struct Queue *queue, tcb *threadControlBlock);
 void freeQueue(struct Queue *queue);
-#endif
+
+#endif QUEUE_H
