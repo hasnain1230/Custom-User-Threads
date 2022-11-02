@@ -1,7 +1,5 @@
 CC = gcc
-CFLAGS = -g -w -Wall # -fsanitize=address
-
-SCHED = PSJF
+CFLAGS = -g -w
 
 all:: parallel_cal vector_multiply external_cal test
 
@@ -15,12 +13,7 @@ external_cal:
 	$(CC) $(CFLAGS) -pthread -o external_cal external_cal.c -L../ -lmypthread
 
 test:
-	$(CC) $(CFLAGS) -DRR -pthread -o test test.c -L../ -lmypthread
-
-test_queue: ../queue.c test.c
-	$(CC) -c $(CFLAGS) ../queue.c
-	$(CC) -c $(CFLAGS) test.c
-	$(CC) $(CFLAGS) queue.o test.o -o test_queue
+	$(CC) $(CFLAGS) -pthread -o test test.c -L../ -lmypthread
 
 clean:
 	rm -rf testcase test parallel_cal vector_multiply external_cal *.o ./record/
