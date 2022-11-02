@@ -1,10 +1,5 @@
-// File:	mypthread_t.h
-
-// List all group members' names:
-// iLab machine tested on:
-
-#ifndef MYTHREAD_T_H
-#define MYTHREAD_T_H
+#ifndef MYPTHREAD_H
+#define MYPTHREAD_H
 
 #define _GNU_SOURCE
 
@@ -24,26 +19,23 @@
 
 typedef uint mypthread_t;
 
-	/* add important states in a thread control block */
+/* add important states in a thread control block */
 typedef struct threadControlBlock {
     ushort status; // 0 = ready, 1 = running, 2 = blocked, 3 = terminated
-	mypthread_t threadID;
+    mypthread_t threadID;
     uint threadPriority;
-    ucontext_t *currentContext;
-	ucontext_t *threadContext;
-    mypthread_t threadsWaitingToJoin[150];
-    uint numberOfThreadsWaitingToJoin;
+    ucontext_t *currentContext, *threadContext;
     void* returnValue;
 } tcb;
 
 /* mutex struct definition */
 typedef struct mypthread_mutex_t {
     atomic_bool lock;
+    mypthread_t owner;
+    void *waitingQueue; // To avoid circular dependencies, we make this void * and cast it to a Queue * when we use it.
 } mypthread_mutex_t;
 
-// Feel free to add your own auxiliary data structures (linked list or queue etc...)
-
-
+// Queue data structure assigned in queue.h and queue.c. Makefile has been updated accordingly.
 
 /* Function Declarations: */
 

@@ -1,17 +1,9 @@
-//
-// Created by lucidity on 10/29/22.
-//
-
 #include "queue.h"
-#include "assert.h"
+#include "mypthread.h"
+#include "checkMalloc.h"
+#include <assert.h>
 #include <string.h>
 
-void checkMalloc(void *ptr) {
-    if (ptr == NULL) {
-        perror("Malloc failed.");
-        exit(1);
-    }
-}
 
 struct Queue *initQueue() {
     struct Queue *queue = malloc(sizeof(struct Queue));
