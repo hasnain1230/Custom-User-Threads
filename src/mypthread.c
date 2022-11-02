@@ -1,7 +1,7 @@
 // File:	mypthread.c
 
-// List all group members' names:
-// iLab machine tested on:
+// List all group members' names: Hasnain Ali, Rushabh Patel, Della Maret
+// iLab machine tested on: rlab2.cs.rutgers.edu
 
 #include "mypthread.h"
 #include "queue.h"
@@ -30,6 +30,7 @@ static struct itimerval timer;
 
 static uint threadCount = 0;
 static tcb *currentThreadControlBlock = NULL;
+static tcb *mainThread = NULL;
 static ucontext_t *scheduler_context, *default_context;
 struct Queue *readyQueue = NULL;
 static struct LinkedList *exitedThreads = NULL, *joinList = NULL;
@@ -49,21 +50,14 @@ void cleanUp() {
     freeQueue(readyQueue);
 }
 
+
 /* create a new thread */
 int mypthread_create(mypthread_t *thread, pthread_attr_t * attr, void *(*function)(void*), void * arg) {
-    // Creating Thread Control Block:
-    if (threadCount == 0 && readyQueue == NULL && exitedThreads == NULL && joinList == NULL) {
-        default_context = (ucontext_t *) malloc(sizeof(ucontext_t));
-        checkMalloc(default_context);
+    static pid_t threadID = 0;
+    if (threadCount == 0 && readyQueue == NULL && exitedThreads == NULL && joinList == NULL) { // If this is the first thread to be created, we need to initialize some structures.
+        readyQueue = initQueue(); // Initialize the ready queue.
 
-        if (getcontext(default_context) == -1) {
-            perror("getcontext");
-            return -1;
-        }
-
-        readyQueue = initQueue();
-
-        exitedThreads = malloc(sizeof(struct LinkedList));
+        exitedThreads = malloc(sizeof(struct LinkedList)); // Exit and waiting to join threads are stored in a linked list.
         exitedThreads->head = NULL;
         exitedThreads->tail = NULL;
         exitedThreads->currentSize = 0;
@@ -73,19 +67,21 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t * attr, void *(*functio
         joinList->tail = NULL;
         joinList->currentSize = 0;
 
-        create_schedule_context();
+        create_schedule_context(); // Create the scheduler context to go to everytime the timer goes off or a new job is enqueued (depending on the algorithm)
 
         // atexit(cleanUp);
     }
 
-    static pid_t threadId = 0;
     ucontext_t *currentContext = malloc(sizeof(ucontext_t));
     checkMalloc(currentContext);
     ucontext_t *ucontext_thread = malloc(sizeof(ucontext_t));
     checkMalloc(ucontext_thread);
+    getcontext(ucontext_thread);
+    getcontext(currentContext);
 
-    if (getcontext(currentContext) == -1 || getcontext(ucontext_thread) == -1) { // If something when creating thread goes wrong, we clean up and return -1
-        perror("getcontext failed.");
+    if (getcontext(ucontext_thread) == -1 ^ getcontext(currentContext) == -1) { // This way, both contexts are evaluated and ensured they were gotten properly.
+        perror("getcontext");
+
         free(currentContext);
         free(ucontext_thread);
         freeQueue(readyQueue);
@@ -122,7 +118,7 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t * attr, void *(*functio
     tcb *threadControlBlock = malloc(sizeof(tcb));
     threadControlBlock->currentContext = currentContext;
     threadControlBlock->threadContext = ucontext_thread;
-    threadControlBlock->threadID = threadId++;
+    threadControlBlock->threadID = threadID++;
     *thread = threadControlBlock->threadID;
     threadControlBlock->status = 0; // Ready to be enqueued.
 
@@ -157,7 +153,7 @@ int mypthread_yield() {
     if (currentThreadControlBlock != NULL) {
         currentThreadControlBlock->status = 0; // 0 = ready
     }
-    swapcontext(currentThreadControlBlock->currentContext, scheduler_context);
+    swapcontext(currentThreadControlBlock->threadContext, scheduler_context);
     return 0;
 };
 
@@ -314,15 +310,19 @@ int mypthread_mutex_destroy(mypthread_mutex_t *mutex) {
     return 0;
 };
 
+void swapToScheduler() {
+    swapcontext(currentThreadControlBlock->threadContext, scheduler_context);
+}
+
 void setupTimer() {
     sigemptyset( &sa1.sa_mask);
     sa1.sa_flags = SA_RESTART;
-    sa1.sa_handler = &scheduler_interrupt_handler;
+    sa1.sa_handler = &swapToScheduler;
     sigaction(SIGALRM, &sa1, NULL);
 
     sigemptyset( &sa2.sa_mask);
     sa2.sa_flags = SA_RESTART;
-    sa2.sa_handler = &scheduler_interrupt_handler;
+    sa2.sa_handler = &swapToScheduler;
     sigaction(SIGVTALRM, &sa2, NULL);;
 
     restartTimer(); // We are technically starting the timer here, but it is effectively the same as restarting it.
@@ -405,7 +405,6 @@ void create_schedule_context() {
 /* Round Robin scheduling algorithm */
 static void sched_RR(int signalNumber) {
     stopTimer();
-
     if (currentThreadControlBlock->status == 0) {
         currentThreadControlBlock->status = 1;
         restartTimer();
@@ -416,12 +415,17 @@ static void sched_RR(int signalNumber) {
     }
 
 
-    if (currentThreadControlBlock->status == 1 && (signalNumber == SIGALRM || signalNumber == SIGVTALRM)) { // If the thread is new, we need to set it to ready
+    if (currentThreadControlBlock->status == 1 /*&& (signalNumber == SIGALRM || signalNumber == SIGVTALRM)*/) { // If the thread is new, we need to set it to ready
         currentThreadControlBlock->status = 0;
-        getcontext(currentThreadControlBlock->threadContext); // FIXME: How can I save the context of this thread and give time to the other thread.
+
         normalEnqueue(readyQueue, currentThreadControlBlock);
         tcb *nextThread = (tcb *) normalDequeue(readyQueue); // Get the next thread to run
         currentThreadControlBlock = nextThread; // Set the current thread to the next thread
+
+        if (!isEmpty(readyQueue)) {
+            exit(1);
+        }
+
         restartTimer();
 
         if (setcontext(currentThreadControlBlock->threadContext) == -1) {
