@@ -3,7 +3,7 @@ CFLAGS = -g
 AR = ar -rcv
 RANLIB = ranlib
 
-SCHED = PSJF
+SCHED = RR
 
 all: mypthread.a
 

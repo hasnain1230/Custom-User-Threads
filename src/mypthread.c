@@ -1,7 +1,7 @@
 // File:	mypthread.c
 
-// List all group members' names:
-// iLab machine tested on:
+// List all group members' names: Hasnain Ali, Rushabh Patel, Della Maret
+// iLab machine tested on: rlab2.cs.rutgers.edu
 
 #include "mypthread.h"
 #include "queue.h"
@@ -21,11 +21,8 @@
 #define QUANTUM 6000 // Quantum is set to 6ms = 6000 us
 #define MAXTHREADS 128 // Maximum number of threads allowed
 
-// INITAILIZE ALL YOUR VARIABLES HERE
-// YOUR CODE HERE
-
 static struct sigaction sa1, sa2; // Signal handlers
-static struct itimerval timer; // Timer for round robin
+static struct itimerval timer; // Timer for Round Robin scheduling
 
 static uint threadCount = 0;
 static tcb *currentThreadControlBlock = NULL; // Current thread control block
@@ -139,8 +136,6 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t * attr, void *(*functio
 int mypthread_yield() {
     if (currentThreadControlBlock != NULL) {
         currentThreadControlBlock->status = 0; // 0 = ready
-    } else {
-        return -1;
     }
     swapcontext(currentThreadControlBlock->threadContext, scheduler_context); // Save the current context and surrender its running time.
     return 0;
@@ -156,7 +151,7 @@ void mypthread_exit(void *value_ptr) {
 
     insert(exitedThreads, currentThreadControlBlock); // Insert the thread into the exited threads linked list.
 
-    currentThreadControlBlock->status = 3; // Indicate termination.
+    currentThreadControlBlock->status = 3;  // Indicate termination.
     // free any dynamic memory created by the thread
     free(currentThreadControlBlock->threadContext->uc_stack.ss_sp);
     free(currentThreadControlBlock->threadContext);
@@ -183,7 +178,7 @@ void mypthread_exit(void *value_ptr) {
         current = current->next;
     }
 
-    currentThreadControlBlock = normalDequeue(readyQueue); // The current TCB is done. Get the next one to be the currently running thread.
+    currentThreadControlBlock = normalDequeue(readyQueue);// The current TCB is done. Get the next one to be the currently running thread.
 
     return;
 };
@@ -266,9 +261,9 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex) {
             tcb *threadControlBlock = normalDequeue(waitingQueue);
             threadControlBlock->status = 0; // This thread is ready to be enqueued and run.
 
-            if (!SCHED) {
+            if (!SCHED) { // Round Robin Scheduling
                 normalEnqueue(readyQueue, threadControlBlock);
-            } else {
+            } else { // Preemptive Priority Scheduling
                 threadControlBlock->threadPriority = 0;
                 priorityEnqueue(readyQueue, threadControlBlock);
                 swapcontext(currentThreadControlBlock->currentContext, scheduler_context);
@@ -292,7 +287,7 @@ void swapToScheduler() {
     if (currentThreadControlBlock == NULL && isEmpty(readyQueue)) { // No more work left to do, so we return back to default context.
         return;
     }
-    swapcontext(currentThreadControlBlock->threadContext, scheduler_context); // Swap to the scheduler context.There is more work left to do.
+    swapcontext(currentThreadControlBlock->threadContext, scheduler_context); // Swap to the scheduler context. There is more work left to do.
 }
 
 void setupTimer() { // Set up the timer and signal handler for SIGALRM and SIGVTALRM.
@@ -311,12 +306,12 @@ void setupTimer() { // Set up the timer and signal handler for SIGALRM and SIGVT
 
 /* setup new interval timer*/
 /* After finishing running library code, restart timer to allow scheduler to run periodically*/
-void restartTimer() { // Restart the timer.
+void restartTimer() {
     memset(&timer, 0, sizeof(timer));
     timer.it_value.tv_sec = 0;
-    timer.it_value.tv_usec = QUANTUM; // 25ms
+    timer.it_value.tv_usec = QUANTUM; // 6ms
     timer.it_interval.tv_sec = 0;
-    timer.it_interval.tv_usec = QUANTUM; // 25ms
+    timer.it_interval.tv_usec = QUANTUM; // 6ms
 
     if (setitimer(ITIMER_VIRTUAL, &timer, NULL) == -1) {
         perror("setitimer");
@@ -333,23 +328,26 @@ void stopTimer() { // Stop the timer.
     setitimer(ITIMER_REAL,&timer,NULL);
 }
 
+
 void scheduler_interrupt_handler() {
     if (!SCHED) { // Means we are using round robin
-        sched_RR(); // Go to RR scheduler
+        sched_RR();  // Go to RR scheduler
         return;
     } else {
-        sched_PSJF(); // Go to SJF scheduler
+        sched_PSJF(); // Go to PSJF scheduler
         return;
     }
 }
 
 
 /* scheduler */
-static void schedule() {
-    if (!isEmpty(readyQueue)) {
+static void schedule() { // Allow us get the next thread if the current one is null
+    if (currentThreadControlBlock == NULL) {
         currentThreadControlBlock = (tcb *) normalDequeue(readyQueue);
-    } else {
-        return;
+
+        if (currentThreadControlBlock == NULL) {
+            return;
+        }
     }
 
     scheduler_interrupt_handler(); // Call the scheduler interrupt handler for the appropriate scheduler.
@@ -357,7 +355,7 @@ static void schedule() {
 }
 
 /* The scheduler's context must be created before it can be switched into periodically*/
-void create_schedule_context() {
+void create_schedule_context() { // Create the scheduler context so we can come back to it anytime.
     scheduler_context = (ucontext_t*) malloc(sizeof(ucontext_t));
 
     getcontext(scheduler_context);
@@ -366,15 +364,19 @@ void create_schedule_context() {
     scheduler_context->uc_stack.ss_size = SIGSTKSZ;
     scheduler_context->uc_stack.ss_flags = 0;
 
+    // What should uc_link actually point to?
+    // scheduler_context->uc_link = default_context;
+
+
     makecontext(scheduler_context,schedule,0,NULL);
 }
 
 /* Round Robin scheduling algorithm */
 static void sched_RR() {
     stopTimer();
-    if (currentThreadControlBlock->status == 0) {
-        currentThreadControlBlock->status = 1;
-        restartTimer();
+    if (currentThreadControlBlock->status == 0) { // This thread is ready to be enqueued and run.
+        currentThreadControlBlock->status = 1; // We start running the thread
+        restartTimer(); // Restart the timer so that the thread can run for QUANTUM amount of time.
         if (setcontext(currentThreadControlBlock->threadContext) == -1) {
             perror("setcontext");
             exit(-1);
@@ -385,10 +387,10 @@ static void sched_RR() {
     if (currentThreadControlBlock->status == 1) { // If the thread is new, we need to set it to ready
         currentThreadControlBlock->status = 0;
 
-        normalEnqueue(readyQueue, currentThreadControlBlock); // Put this back into the ready queue
+        normalEnqueue(readyQueue, currentThreadControlBlock);
         tcb *nextThread = (tcb *) normalDequeue(readyQueue); // Get the next thread to run
         currentThreadControlBlock = nextThread; // Set the current thread to the next thread
-        currentThreadControlBlock->status = 1; // Set the status to running
+        currentThreadControlBlock->status = 1; // Set the status of the next thread to running
 
         restartTimer(); // Restart timer and swap to the next thread
 
@@ -410,12 +412,12 @@ static void sched_PSJF() {
     } else if (currentThreadControlBlock->status == 1) { // We've already checked at this point that this thread has a greater priority than the currently running thread.
         currentThreadControlBlock->status = 0;
         currentThreadControlBlock->threadPriority++; // Increment the priority of the thread that just ran
-        priorityEnqueue(readyQueue, currentThreadControlBlock); // Enqueue into the ready queue based on priority.
+        priorityEnqueue(readyQueue, currentThreadControlBlock);
         tcb *nextThread = normalDequeue(readyQueue); // Get the next thread to run
         currentThreadControlBlock = nextThread; // Set the current thread to the next thread
         currentThreadControlBlock->status = 1; // Set the status of the next thread to running
 
-        if (setcontext(currentThreadControlBlock->threadContext) == -1) {
+        if (setcontext(currentThreadControlBlock->threadContext) == -1) { // Context switch into next thread
             perror("setcontext");
             exit(-1);
         }
