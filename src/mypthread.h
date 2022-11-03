@@ -32,15 +32,15 @@ typedef struct threadControlBlock {
 typedef struct mypthread_mutex_t {
     atomic_bool lock;
     mypthread_t owner;
-    void *waitingQueue; // To avoid circular dependencies, we make this void * and cast it to a Queue * when we use it.
+    void *waitingQueue; // To avoid circular dependencies, we make this void * and cast it to a Queue * when we use it. This is the waiting queue for the mutex.
 } mypthread_mutex_t;
 
 // Queue data structure assigned in queue.h and queue.c. Makefile has been updated accordingly.
 
 /* Function Declarations: */
 
-void setup_timer();
-void create_schedule_context();
+void setupTimer(); // Setup the timer for the quantum
+void create_schedule_context(); // Create the context for the scheduler
 
 
 /* create a new thread */
@@ -79,4 +79,4 @@ int mypthread_mutex_destroy(mypthread_mutex_t *mutex);
 #define pthread_mutex_destroy mypthread_mutex_destroy
 #endif
 
-#endif
+#endif //THREADINGTEST_MYPTHREAD_H
