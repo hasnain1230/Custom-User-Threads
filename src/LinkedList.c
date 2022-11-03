@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-bool isListEmpty(struct LinkedList *linkedList) {
+bool isListEmpty(struct LinkedList *linkedList) { // Checks if the linked list is empty
     return linkedList->head == NULL;
 }
 
@@ -16,14 +16,14 @@ bool insert(struct LinkedList *linkedList, void *data) {
     }
     // Insert new node at the end of the list
     struct LinkedListNode *newNode = malloc(sizeof(struct LinkedListNode));
-    newNode->data = data;
+    newNode->data = data; // Store data in Node structure
     newNode->next = NULL;
 
-    if (linkedList->head == NULL) {
+    if (linkedList->head == NULL) { // If it's the first element we are inserting
         linkedList->head = newNode;
         linkedList->tail = newNode;
         linkedList->currentSize++;
-    } else {
+    } else { // Otherwise just insert at the head.
         linkedList->tail->next = newNode;
         linkedList->tail = newNode;
         linkedList->currentSize++;
@@ -32,13 +32,13 @@ bool insert(struct LinkedList *linkedList, void *data) {
     return true;
 }
 
-void *delete(struct LinkedList *linkedList, void *data, size_t dataSize) {
+void *delete(struct LinkedList *linkedList, void *data) {
     // Delete the first node that matches the data
-    struct LinkedListNode *currentNode = linkedList->head;
+    struct LinkedListNode *currentNode = linkedList->head; // Pointers to traverse done.
     struct LinkedListNode *previousNode = NULL;
 
     while (currentNode != NULL) {
-        if (currentNode->data == data) {
+        if (currentNode->data == data) { // We are comparing the memory addresses since we are not copying the data when we enqueue. The addresses will match.
             if (previousNode == NULL) {
                 // If the node to be deleted is the head
                 linkedList->head = currentNode->next;
@@ -58,13 +58,13 @@ void *delete(struct LinkedList *linkedList, void *data, size_t dataSize) {
             }
         }
 
-        previousNode = currentNode;
+        previousNode = currentNode; // Iterate pointers.
         currentNode = currentNode->next;
     }
 
-    return NULL;
+    return NULL; // Found nothing to delete.
 }
 
-size_t getSize(struct LinkedList *linkedList) {
+size_t getSize(struct LinkedList *linkedList) { // Returns the size of the linked list
     return linkedList->currentSize;
 }

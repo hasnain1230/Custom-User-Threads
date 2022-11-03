@@ -20,39 +20,28 @@
  */
 
 void function1() {
-    while(1){
-        //printf("Function 1 running\n");
-        sleep(10);
-    }
+    puts("function1");
+    pthread_exit(NULL);
 }
 
 void function2()
 {
-    while(1) {
-        //printf("Function 2 running\n");
-        sleep(10);
-    }
-
-
+    puts("function2");
+    pthread_exit(NULL);
 }
 
 
 void function3()
 {
-    while(1){
-        //printf("Function 3 running\n");
-        sleep(10);
-        
-    }
+    puts("function3");
+    pthread_exit(NULL);
 }
 
 
 void function4(){
 
-    while(1){
-        //printf("Function 4 is working");
-        sleep(10);
-    }
+    puts("function4");
+    pthread_exit(NULL);
 
 }
 
@@ -62,15 +51,7 @@ int main (void) {
     pthread_create(&thread1,NULL,(void*) function1,NULL);
     pthread_create(&thread2,NULL,(void*) function2,NULL);
     pthread_create(&thread3,NULL,(void*) function3,NULL);
-    int  i = 0;
-    while(1){
-        if(i == 0){
-            printf("%d\n",thread1);
-            printf("%d\n",thread2);
-            printf("%d\n",thread3);
-        }
-        i++;
-    }
+    pthread_create(&thread4,NULL,(void*) function4,NULL);
 }
 
 /*    pthread_t thread1,thread2,thread3,thread4;

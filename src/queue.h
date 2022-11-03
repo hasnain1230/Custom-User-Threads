@@ -6,22 +6,22 @@
 #include "mypthread.h"
 
 
-struct Node {
+struct Node { // Double linked list for the queue
     void *data;
     size_t dataSize;
     struct Node *prev, *next;
 };
 
-struct Queue {
+struct Queue { // Queue properties
     struct Node *head, *tail;
     size_t currentSize;
 };
 
-struct Queue *initQueue();
-bool isEmpty(struct Queue *queue);
-void normalEnqueue(struct Queue *queue, tcb *threadControlBlock);
-tcb *normalDequeue(struct Queue *queue);
-void priorityEnqueue(struct Queue *queue, tcb *threadControlBlock);
-void freeQueue(struct Queue *queue);
+struct Queue *initQueue(); // Initializes the queue and returns a pointer to said queue.
+bool isEmpty(struct Queue *queue); // Checks if Queue is empty
+void normalEnqueue(struct Queue *queue, tcb *threadControlBlock); // Enqueues a thread control block without any priority
+tcb *normalDequeue(struct Queue *queue); // Dequeues a thread control block. We just named it normalDequeue for clarity
+void priorityEnqueue(struct Queue *queue, tcb *threadControlBlock); // Inserts the tcb into the queue based on priority
+void freeQueue(struct Queue *queue); // Cleans up the queue.
 
 #endif

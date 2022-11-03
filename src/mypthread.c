@@ -1,7 +1,7 @@
 // File:	mypthread.c
 
-// List all group members' names: Hasnain Ali, Rushabh Patel, Della Maret
-// iLab machine tested on: rlab2.cs.rutgers.edu
+// List all group members' names:
+// iLab machine tested on:
 
 #include "mypthread.h"
 #include "queue.h"
@@ -11,7 +11,6 @@
 #include <ucontext.h>
 #include <sys/time.h>
 #include <string.h>
-#include <assert.h>
 
 #ifndef PSJF
 #define SCHED 0 // Indicates round-robin scheduling
@@ -19,41 +18,31 @@
 #define SCHED 1 // Indicates PSJF scheduling
 #endif
 
-#define QUANTUM 25000 // Quantum is set to 25ms = 25000 us
+#define QUANTUM 6000 // Quantum is set to 6ms = 6000 us
 #define MAXTHREADS 128 // Maximum number of threads allowed
 
 // INITAILIZE ALL YOUR VARIABLES HERE
 // YOUR CODE HERE
 
-static struct sigaction sa1, sa2;
-static struct itimerval timer;
+static struct sigaction sa1, sa2; // Signal handlers
+static struct itimerval timer; // Timer for round robin
 
 static uint threadCount = 0;
-static tcb *currentThreadControlBlock = NULL;
-static tcb *mainThread = NULL;
-static ucontext_t *scheduler_context, *default_context;
+static tcb *currentThreadControlBlock = NULL; // Current thread control block
+static ucontext_t *scheduler_context;
 struct Queue *readyQueue = NULL;
-static struct LinkedList *exitedThreads = NULL, *joinList = NULL;
+static struct LinkedList *exitedThreads = NULL, *joinList = NULL; // Two linked lists, one for the threads that have existed, and one for the threads that are waiting to be joined.
 
 void setupTimer();
-void scheduler_interrupt_handler(int signalNumber);
-static void sched_RR(int signalNumber);
+void scheduler_interrupt_handler();
+static void sched_RR();
 static void sched_PSJF();
 int mypthread_yield();
 void restartTimer();
 
-void cleanUp() {
-    free(scheduler_context->uc_stack.ss_sp);
-    free(scheduler_context);
-    free(default_context->uc_stack.ss_sp);
-    free(default_context);
-    freeQueue(readyQueue);
-}
-
-
-/* create a new thread */
+/* create a new thread and push it on to the queue */
 int mypthread_create(mypthread_t *thread, pthread_attr_t * attr, void *(*function)(void*), void * arg) {
-    static pid_t threadID = 0;
+    static pid_t threadID = 0; // Static because we want to retain the value for the lifetime of the primary execution context.
     if (threadCount == 0 && readyQueue == NULL && exitedThreads == NULL && joinList == NULL) { // If this is the first thread to be created, we need to initialize some structures.
         readyQueue = initQueue(); // Initialize the ready queue.
 
@@ -68,16 +57,12 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t * attr, void *(*functio
         joinList->currentSize = 0;
 
         create_schedule_context(); // Create the scheduler context to go to everytime the timer goes off or a new job is enqueued (depending on the algorithm)
-
-        // atexit(cleanUp);
     }
 
     ucontext_t *currentContext = malloc(sizeof(ucontext_t));
     checkMalloc(currentContext);
     ucontext_t *ucontext_thread = malloc(sizeof(ucontext_t));
     checkMalloc(ucontext_thread);
-    getcontext(ucontext_thread);
-    getcontext(currentContext);
 
     if (getcontext(ucontext_thread) == -1 ^ getcontext(currentContext) == -1) { // This way, both contexts are evaluated and ensured they were gotten properly.
         perror("getcontext");
@@ -88,6 +73,7 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t * attr, void *(*functio
 
         struct LinkedListNode *current = exitedThreads->head;
 
+        // Clean up everything that may be allocated in case of an error or something went wrong when getting the context.
         while (current != NULL) {
             tcb *data = (tcb *) current->data;
             free(data);
@@ -107,14 +93,15 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t * attr, void *(*functio
 
         free(current2);
 
-        return -1;
+        return -1; // Error creating the pthread.
     }
 
-    ucontext_thread->uc_stack.ss_size = SIGSTKSZ;
+    ucontext_thread->uc_stack.ss_size = SIGSTKSZ; // Default stack size in Linux Operating Systems
     ucontext_thread->uc_stack.ss_sp = malloc(SIGSTKSZ);
     ucontext_thread->uc_link = currentContext;
-    makecontext(ucontext_thread, (void *) function, 1, arg);
+    makecontext(ucontext_thread, (void *) function, 1, arg); // Allows us to context switch into the function.
 
+    // Create the actual thread control block.
     tcb *threadControlBlock = malloc(sizeof(tcb));
     threadControlBlock->currentContext = currentContext;
     threadControlBlock->threadContext = ucontext_thread;
@@ -122,20 +109,20 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t * attr, void *(*functio
     *thread = threadControlBlock->threadID;
     threadControlBlock->status = 0; // Ready to be enqueued.
 
-    if (!SCHED) {
+    if (!SCHED) { // Indicates Round Robin Scheduling Algorithm
         threadControlBlock->threadPriority = -1; // Thread priority not important when using round-robin scheduling.
-        normalEnqueue(readyQueue, threadControlBlock);
+        normalEnqueue(readyQueue, threadControlBlock); // Round Robin does not require priority scheduling
 
         if (threadCount == 0) {
-            setupTimer();
+            setupTimer(); // Since we are using round-robin, we need to set up the timer.
         }
 
     } else {
         threadControlBlock->threadPriority = 0; // Thread priority is 0 when using PSJF scheduling.
-        priorityEnqueue(readyQueue, threadControlBlock);
+        priorityEnqueue(readyQueue, threadControlBlock); // We need to enqueue in the right place in the queue based on the current priority.
     }
 
-    threadCount++;
+    threadCount++; // Increment the thread count.
 
     if (threadCount > MAXTHREADS) {
         perror("Maximum number of threads reached.");
@@ -143,7 +130,7 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t * attr, void *(*functio
     }
 
 
-    swapcontext(currentContext, scheduler_context);
+    swapcontext(currentContext, scheduler_context); // Save the current context and go to the scheduler context.
 
     return 0;
 };
@@ -152,50 +139,51 @@ int mypthread_create(mypthread_t *thread, pthread_attr_t * attr, void *(*functio
 int mypthread_yield() {
     if (currentThreadControlBlock != NULL) {
         currentThreadControlBlock->status = 0; // 0 = ready
+    } else {
+        return -1;
     }
-    swapcontext(currentThreadControlBlock->threadContext, scheduler_context);
+    swapcontext(currentThreadControlBlock->threadContext, scheduler_context); // Save the current context and surrender its running time.
     return 0;
 };
 
 /* terminate a thread */
 void mypthread_exit(void *value_ptr) {
-    if (value_ptr == NULL) {
+    if (value_ptr == NULL) { // Checking if there is a return value.
         currentThreadControlBlock->returnValue = NULL;
     } else {
         currentThreadControlBlock->returnValue = value_ptr; // We are preserving the return value of the thread.
     }
 
-    insert(exitedThreads, currentThreadControlBlock);
+    insert(exitedThreads, currentThreadControlBlock); // Insert the thread into the exited threads linked list.
 
-    currentThreadControlBlock->status = 3;
+    currentThreadControlBlock->status = 3; // Indicate termination.
     // free any dynamic memory created by the thread
     free(currentThreadControlBlock->threadContext->uc_stack.ss_sp);
     free(currentThreadControlBlock->threadContext);
     free(currentThreadControlBlock->currentContext);
 
-    threadCount--;
+    threadCount--; // Thread has exited, so decrement thread count.
 
-    struct LinkedListNode *current = joinList->head;
+    struct LinkedListNode *current = joinList->head; // Check if any threads are waiting to be joined.
 
     while (current != NULL) {
         tcb *data = (tcb *) current->data;
         if (data->threadID == currentThreadControlBlock->threadID) {
-            data->status = 1;
+            data->status = 0; // Ready to be enqueued and joined.
 
             if (!SCHED) {
-                normalEnqueue(readyQueue, data);
+                normalEnqueue(readyQueue, data); // Round robin scheduling.
             } else {
-                data->threadPriority = 0;
+                data->threadPriority = 0; // Set priority and enqueue
                 priorityEnqueue(readyQueue, data);
-                mypthread_yield();
+                mypthread_yield(); // Trap out of the context and let the recently unblocked thread run.
             }
-            break;
+            break; // If we found it, then unblock it; we are done.
         }
         current = current->next;
     }
 
-    currentThreadControlBlock = normalDequeue(readyQueue);
-
+    currentThreadControlBlock = normalDequeue(readyQueue); // The current TCB is done. Get the next one to be the currently running thread.
 
     return;
 };
@@ -204,7 +192,7 @@ void mypthread_exit(void *value_ptr) {
 /* Wait for thread termination */
 int mypthread_join(mypthread_t thread, void **value_ptr)
 {
-    struct LinkedListNode *ptr = exitedThreads->head;
+    struct LinkedListNode *ptr = exitedThreads->head; // Checking to see which threads have exited.
 
     tcb *joinThread = malloc(sizeof(tcb));
     joinThread->threadID = thread; // The TID of the threat we want to join.
@@ -218,35 +206,29 @@ int mypthread_join(mypthread_t thread, void **value_ptr)
         tcb *threadControlBlock = (tcb *) ptr->data;
         if (threadControlBlock->threadID == thread) {
             if (value_ptr != NULL) {
-                *value_ptr = threadControlBlock->returnValue;
+                *value_ptr = threadControlBlock->returnValue; // Preserving the return value.
             }
 
-            delete(exitedThreads, threadControlBlock, sizeof(tcb));
+            delete(exitedThreads, threadControlBlock, sizeof(tcb)); // Delete this thread from the join list.
             free(threadControlBlock);
             free(ptr);
             free(joinThread->threadContext);
             free(joinThread);
-            return 0;
+            return 0; // Clean up and return.
         }
         ptr = ptr->next;
     }
 
     joinThread->status = 2; // 2 = waiting for the thread to exit
-    insert(joinList, joinThread);
-
-    // wait for a specific thread to terminate
-    // deallocate any dynamic memory created by the joining thread
+    insert(joinList, joinThread); // Wait for thread to exit before we can join.
 
     return 0;
 };
 
 /* initialize the mutex lock */
 int mypthread_mutex_init(mypthread_mutex_t *mutex, const pthread_mutexattr_t *mutexattr) {
-    assert(mutexattr == NULL); // We don't support mutex attributes
-
-    atomic_flag_clear(&mutex->lock);
-    mutex->owner = currentThreadControlBlock->threadID;
-    mutex->waitingQueue = (struct Queue *) initQueue();
+    atomic_flag_clear(&mutex->lock); // Clear the lock.
+    mutex->waitingQueue = (struct Queue *) initQueue(); // Initialize the waiting queue for this specific mutex.
 
     return 0;
 };
@@ -255,37 +237,34 @@ int mypthread_mutex_init(mypthread_mutex_t *mutex, const pthread_mutexattr_t *mu
 int mypthread_mutex_lock(mypthread_mutex_t *mutex) {
     if (atomic_flag_test_and_set(&mutex->lock)) {
         // Lock is already set, so we need to block the thread
-        currentThreadControlBlock->status = 2;
+        currentThreadControlBlock->status = 2; // This current thread is locked. It is waiting for the mutex to be unlocked.
 
         if (!SCHED) {
-            normalEnqueue(mutex->waitingQueue, currentThreadControlBlock);
+            normalEnqueue(mutex->waitingQueue, currentThreadControlBlock); // Place them in a block queue for threads waiting to gain access.
         } else {
             currentThreadControlBlock->threadPriority = 0; // We set the priority to 0 so that it is the first to be scheduled when it is unblocked. If they have the same priority, it is first come first serve.
             priorityEnqueue(mutex->waitingQueue, currentThreadControlBlock);
         }
 
-        swapcontext(currentThreadControlBlock->currentContext, scheduler_context);
+        swapcontext(currentThreadControlBlock->currentContext, scheduler_context); // Swap to the next context because this one is blocked on a mutex.
 
         return -1;
     } else {
+        mutex->owner = currentThreadControlBlock->threadID; // This thread owns the lock. He and he own is powerful enough to hold such power. No one else is strong enough!
         return 0;
     }
-
-    // use the built-in test-and-set atomic function to test the mutex
-    // if the mutex is acquired successfully, return
-    // if acquiring mutex fails, put the current thread on the blocked/waiting list and context switch to the scheduler thread
 };
 
 /* release the mutex lock */
 int mypthread_mutex_unlock(mypthread_mutex_t *mutex) {
-    if (currentThreadControlBlock->threadID == mutex->owner) {
+    if (currentThreadControlBlock->threadID == mutex->owner) { // Only the owner can unlock the mutex.
         atomic_flag_clear(&mutex->lock);
 
         struct Queue *waitingQueue = (struct Queue *) mutex->waitingQueue;
 
         if (!isEmpty(waitingQueue)) {
             tcb *threadControlBlock = normalDequeue(waitingQueue);
-            threadControlBlock->status = 0;
+            threadControlBlock->status = 0; // This thread is ready to be enqueued and run.
 
             if (!SCHED) {
                 normalEnqueue(readyQueue, threadControlBlock);
@@ -298,23 +277,25 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex) {
 
         return 0;
     } else {
-        return -1;
+        return -1; // This thread does not own the lock, so it cannot unlock it.
     }
 };
 
 
 /* destroy the mutex */
 int mypthread_mutex_destroy(mypthread_mutex_t *mutex) {
-    freeQueue(mutex->waitingQueue);
-    free(mutex);
+    freeQueue(mutex->waitingQueue); // Free the wait queue.
     return 0;
 };
 
 void swapToScheduler() {
-    swapcontext(currentThreadControlBlock->threadContext, scheduler_context);
+    if (currentThreadControlBlock == NULL && isEmpty(readyQueue)) { // No more work left to do, so we return back to default context.
+        return;
+    }
+    swapcontext(currentThreadControlBlock->threadContext, scheduler_context); // Swap to the scheduler context.There is more work left to do.
 }
 
-void setupTimer() {
+void setupTimer() { // Set up the timer and signal handler for SIGALRM and SIGVTALRM.
     sigemptyset( &sa1.sa_mask);
     sa1.sa_flags = SA_RESTART;
     sa1.sa_handler = &swapToScheduler;
@@ -330,7 +311,7 @@ void setupTimer() {
 
 /* setup new interval timer*/
 /* After finishing running library code, restart timer to allow scheduler to run periodically*/
-void restartTimer() {
+void restartTimer() { // Restart the timer.
     memset(&timer, 0, sizeof(timer));
     timer.it_value.tv_sec = 0;
     timer.it_value.tv_usec = QUANTUM; // 25ms
@@ -344,7 +325,7 @@ void restartTimer() {
 }
 
 /* Before running any library code, stop the timer so that library code does not get interrupt*/
-void stopTimer() {
+void stopTimer() { // Stop the timer.
     timer.it_value.tv_sec = 0;
     timer.it_value.tv_usec = 0;
     timer.it_interval.tv_sec = 0;
@@ -352,20 +333,12 @@ void stopTimer() {
     setitimer(ITIMER_REAL,&timer,NULL);
 }
 
-
-void freeCurrentThreadControlBlock() {
-    free(currentThreadControlBlock->threadContext->uc_stack.ss_sp);
-    free(currentThreadControlBlock->threadContext);
-    free(currentThreadControlBlock->currentContext);
-    free(currentThreadControlBlock);
-}
-
-void scheduler_interrupt_handler(int signalNumber) {
+void scheduler_interrupt_handler() {
     if (!SCHED) { // Means we are using round robin
-        sched_RR(signalNumber);
+        sched_RR(); // Go to RR scheduler
         return;
     } else {
-        sched_PSJF();
+        sched_PSJF(); // Go to SJF scheduler
         return;
     }
 }
@@ -373,15 +346,13 @@ void scheduler_interrupt_handler(int signalNumber) {
 
 /* scheduler */
 static void schedule() {
-    if (currentThreadControlBlock == NULL) {
+    if (!isEmpty(readyQueue)) {
         currentThreadControlBlock = (tcb *) normalDequeue(readyQueue);
-
-        if (currentThreadControlBlock == NULL) {
-            return;
-        }
+    } else {
+        return;
     }
 
-    scheduler_interrupt_handler(0);
+    scheduler_interrupt_handler(); // Call the scheduler interrupt handler for the appropriate scheduler.
     return;
 }
 
@@ -391,19 +362,15 @@ void create_schedule_context() {
 
     getcontext(scheduler_context);
 
-    scheduler_context->uc_stack.ss_sp = malloc(SIGSTKSZ);
+    scheduler_context->uc_stack.ss_sp = malloc(SIGSTKSZ); // Default stack size in Linux.
     scheduler_context->uc_stack.ss_size = SIGSTKSZ;
     scheduler_context->uc_stack.ss_flags = 0;
-
-    // What should uc_link actually point to?
-    // scheduler_context->uc_link = default_context;
-
 
     makecontext(scheduler_context,schedule,0,NULL);
 }
 
 /* Round Robin scheduling algorithm */
-static void sched_RR(int signalNumber) {
+static void sched_RR() {
     stopTimer();
     if (currentThreadControlBlock->status == 0) {
         currentThreadControlBlock->status = 1;
@@ -415,18 +382,15 @@ static void sched_RR(int signalNumber) {
     }
 
 
-    if (currentThreadControlBlock->status == 1 /*&& (signalNumber == SIGALRM || signalNumber == SIGVTALRM)*/) { // If the thread is new, we need to set it to ready
+    if (currentThreadControlBlock->status == 1) { // If the thread is new, we need to set it to ready
         currentThreadControlBlock->status = 0;
 
-        normalEnqueue(readyQueue, currentThreadControlBlock);
+        normalEnqueue(readyQueue, currentThreadControlBlock); // Put this back into the ready queue
         tcb *nextThread = (tcb *) normalDequeue(readyQueue); // Get the next thread to run
         currentThreadControlBlock = nextThread; // Set the current thread to the next thread
+        currentThreadControlBlock->status = 1; // Set the status to running
 
-        if (!isEmpty(readyQueue)) {
-            exit(1);
-        }
-
-        restartTimer();
+        restartTimer(); // Restart timer and swap to the next thread
 
         if (setcontext(currentThreadControlBlock->threadContext) == -1) {
             perror("setcontext");
@@ -439,17 +403,17 @@ static void sched_RR(int signalNumber) {
 static void sched_PSJF() {
     if (currentThreadControlBlock->status == 0) {
         currentThreadControlBlock->status = 1;
-        if (setcontext(currentThreadControlBlock->threadContext) == -1) {
+        if (setcontext(currentThreadControlBlock->threadContext) == -1) { // Run the thread with the highest priority right now.
             perror("setcontext");
             exit(-1);
         }
     } else if (currentThreadControlBlock->status == 1) { // We've already checked at this point that this thread has a greater priority than the currently running thread.
         currentThreadControlBlock->status = 0;
         currentThreadControlBlock->threadPriority++; // Increment the priority of the thread that just ran
-        priorityEnqueue(readyQueue, currentThreadControlBlock);
+        priorityEnqueue(readyQueue, currentThreadControlBlock); // Enqueue into the ready queue based on priority.
         tcb *nextThread = normalDequeue(readyQueue); // Get the next thread to run
         currentThreadControlBlock = nextThread; // Set the current thread to the next thread
-        currentThreadControlBlock->status = 1;
+        currentThreadControlBlock->status = 1; // Set the status of the next thread to running
 
         if (setcontext(currentThreadControlBlock->threadContext) == -1) {
             perror("setcontext");
