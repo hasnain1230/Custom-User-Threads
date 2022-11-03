@@ -29,7 +29,7 @@ bool insert(struct LinkedList *linkedList, void *data) {
         linkedList->currentSize++;
     }
 
-    return true;
+    return true; // Return true if successful
 }
 
 void *delete(struct LinkedList *linkedList, void *data) {
