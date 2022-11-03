@@ -1,0 +1,10 @@
+make clean
+make
+./genRecord.sh
+echo "\n"
+./parallel_cal
+echo "\n"
+./external_cal
+echo "\n"
+./vector_multiply
+echo "\n"
