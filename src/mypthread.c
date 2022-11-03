@@ -209,7 +209,7 @@ int mypthread_join(mypthread_t thread, void **value_ptr)
                 *value_ptr = threadControlBlock->returnValue; // Preserving the return value.
             }
 
-            delete(exitedThreads, threadControlBlock, sizeof(tcb)); // Delete this thread from the join list.
+            delete(exitedThreads, threadControlBlock); // Delete this thread from the join list.
             free(threadControlBlock);
             free(ptr);
             free(joinThread->threadContext);
